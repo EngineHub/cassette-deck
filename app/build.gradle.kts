@@ -49,6 +49,8 @@ dependencies {
 
     implementation(libs.bucket4j.core)
 
+    implementation(libs.apache.commons.compress)
+
     // Spring Boot Substitutions (+$1/each)
     implementation(libs.spring.boot.starter.undertow)
     implementation(libs.spring.boot.starter.log4j2)
@@ -92,7 +94,7 @@ jooq {
                     url = "jdbc:sqlite:./database.sqlite"
                 }
                 generator.apply {
-                    name = "org.jooq.codegen.DefaultGenerator"
+                    name = "org.jooq.codegen.JavaGenerator"
                     database.apply {
                         name = "org.jooq.meta.sqlite.SQLiteDatabase"
 
@@ -106,6 +108,7 @@ jooq {
                     generate.apply {
                         isDeprecated = false
                         isDaos = true
+                        // https://github.com/jOOQ/jOOQ/pull/12441
                         isPojosAsJavaRecordClasses = false
                         isFluentSetters = false
                     }

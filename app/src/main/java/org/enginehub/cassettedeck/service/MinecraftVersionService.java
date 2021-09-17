@@ -19,9 +19,11 @@
 package org.enginehub.cassettedeck.service;
 
 import org.enginehub.cassettedeck.data.downstream.Cursor;
+import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 
 public interface MinecraftVersionService {
@@ -35,5 +37,7 @@ public interface MinecraftVersionService {
 
     Cursor<String, Instant> getAllVersions(@Nullable Instant beforeDate, int limit);
 
-    void insert(String version, Instant releaseInstant);
+    void insert(List<MinecraftVersionEntry> entries);
+
+    MinecraftVersionEntry getVersion(String version);
 }

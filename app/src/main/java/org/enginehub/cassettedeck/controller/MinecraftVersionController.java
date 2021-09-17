@@ -19,16 +19,16 @@
 package org.enginehub.cassettedeck.controller;
 
 import org.enginehub.cassettedeck.data.downstream.Cursor;
-import org.enginehub.cassettedeck.data.downstream.DateUtil;
+import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.enginehub.cassettedeck.service.MinecraftVersionService;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
-import java.util.Objects;
 
 @RestController
 @RequestMapping("/minecraft-versions")
@@ -50,5 +50,17 @@ public class MinecraftVersionController {
         @RequestParam(defaultValue = "100") int limit
     ) {
         return versionService.getAllVersions(before, limit);
+    }
+
+    /**
+     * Get information about a particular version.
+     *
+     * @return the current cursor contents
+     */
+    @GetMapping("/{version}")
+    public MinecraftVersionEntry getMinecraftVersion(
+        @PathVariable String version
+    ) {
+        return versionService.getVersion(version);
     }
 }

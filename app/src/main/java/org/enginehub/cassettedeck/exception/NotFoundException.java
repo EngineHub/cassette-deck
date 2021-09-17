@@ -16,22 +16,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package org.enginehub.cassettedeck.data.upstream;
+package org.enginehub.cassettedeck.exception;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+public class NotFoundException extends RuntimeException {
+    private final String type;
 
-import java.time.Instant;
-import java.util.List;
+    public NotFoundException(String type) {
+        super(type + " not found");
+        this.type = type;
+    }
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record VersionManifest(
-    List<Version> versions
-) {
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Version(
-        String id,
-        Instant releaseTime,
-        String url
-    ) {
+    public String type() {
+        return type;
     }
 }

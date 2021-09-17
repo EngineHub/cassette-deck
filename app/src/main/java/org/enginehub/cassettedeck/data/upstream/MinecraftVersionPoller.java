@@ -20,12 +20,14 @@ package org.enginehub.cassettedeck.data.upstream;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.enginehub.cassettedeck.service.MinecraftVersionService;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -67,9 +69,13 @@ public class MinecraftVersionPoller {
             .collect(Collectors.toMap(VersionManifest.Version::id, Function.identity()));
         // Filter to only what we don't have
         needed.keySet().retainAll(minecraftVersionService.findMissingVersions(needed.keySet()));
+        var batch = new ArrayList<MinecraftVersionEntry>(needed.size());
         for (VersionManifest.Version next : needed.values()) {
             LOGGER.info(() -> "Adding " + next.id() + " to the database");
-            minecraftVersionService.insert(next.id(), next.releaseTime());
+            batch.add(new MinecraftVersionEntry(
+                next.id(), null, next.releaseTime(), next.url()
+            ));
         }
+        minecraftVersionService.insert(batch);
     }
 }
