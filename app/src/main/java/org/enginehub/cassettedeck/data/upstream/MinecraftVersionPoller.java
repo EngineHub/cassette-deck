@@ -22,6 +22,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.enginehub.cassettedeck.service.MinecraftVersionService;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -29,9 +30,12 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -42,13 +46,20 @@ public class MinecraftVersionPoller {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
+    private final Semaphore loadingLimit = new Semaphore(12);
     private final MinecraftVersionService minecraftVersionService;
     private final RestTemplate restTemplate;
+    private final ExtraMetadataLoader loader;
+    private final Executor workExecutor;
 
     public MinecraftVersionPoller(MinecraftVersionService minecraftVersionService,
-                                  RestTemplateBuilder restTemplateBuilder) {
+                                  RestTemplateBuilder restTemplateBuilder,
+                                  ExtraMetadataLoader loader,
+                                  @Qualifier("applicationTaskExecutor") Executor workExecutor) {
         this.minecraftVersionService = minecraftVersionService;
         this.restTemplate = restTemplateBuilder.build();
+        this.loader = loader;
+        this.workExecutor = workExecutor;
     }
 
     @Scheduled(fixedDelayString = "${minecraft-version.poll.interval}")
@@ -71,16 +82,28 @@ public class MinecraftVersionPoller {
             .collect(Collectors.toMap(VersionManifest.Version::id, Function.identity()));
         // Filter to only what we don't have
         needed.keySet().retainAll(minecraftVersionService.findMissingVersions(needed.keySet()));
-        var batch = new ArrayList<MinecraftVersionEntry>(needed.size());
         for (VersionManifest.Version next : needed.values()) {
-            LOGGER.info(() -> "Adding " + next.id() + " to the database");
-            batch.add(new MinecraftVersionEntry(
-                next.id(),
-                null,
-                next.releaseTime(),
-                URLDecoder.decode(next.url(), StandardCharsets.UTF_8)
-            ));
+            LOGGER.info(() -> "[" + next.id() + "] Submitting for metadata filling");
+            loadingLimit.acquireUninterruptibly();
+            try {
+                var future = CompletableFuture.runAsync(() -> {
+                    LOGGER.info(() -> "[" + next.id() + "] Starting metadata filling");
+                    var fullEntry = loader.load(new MinecraftVersionEntry(
+                        next.id(),
+                        null,
+                        next.releaseTime(),
+                        URLDecoder.decode(next.url(), StandardCharsets.UTF_8),
+                        null
+                    ));
+                    LOGGER.info(() -> "[" + next.id() + "] Inserting into database");
+                    minecraftVersionService.insert(List.of(fullEntry));
+                }, workExecutor);
+                // Ensure this gets released no matter what
+                future.whenComplete((__, ___) -> loadingLimit.release());
+            } catch (Throwable t) {
+                loadingLimit.release();
+                throw t;
+            }
         }
-        minecraftVersionService.insert(batch);
     }
 }

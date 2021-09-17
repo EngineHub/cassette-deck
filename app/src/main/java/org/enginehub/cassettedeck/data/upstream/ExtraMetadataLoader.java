@@ -42,7 +42,7 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 @Component
-public class DataVersionLoader {
+public class ExtraMetadataLoader {
     private static final Logger LOGGER = LogManager.getLogger();
     // Data versions not indexable automatically, but needed downstream
     private static final Map<String, Integer> KNOWN_DATA_VERSIONS = Map.of(
@@ -53,7 +53,7 @@ public class DataVersionLoader {
     private final ObjectMapper mapper;
     private final RestTemplate restTemplate;
 
-    public DataVersionLoader(ObjectMapper mapper, RestTemplateBuilder restTemplateBuilder) {
+    public ExtraMetadataLoader(ObjectMapper mapper, RestTemplateBuilder restTemplateBuilder) {
         this.mapper = mapper;
         this.restTemplate = restTemplateBuilder
             .defaultHeader("User-Agent", "cassette-deck")
@@ -88,14 +88,27 @@ public class DataVersionLoader {
     ) {
     }
 
-    public int load(MinecraftVersionEntry entry) throws DownloadException {
+    public MinecraftVersionEntry load(MinecraftVersionEntry entry) throws DownloadException {
+        var metadata = restTemplate.getForObject(entry.getUrl(), MinecraftMetadata.class);
+        Objects.requireNonNull(metadata, "metadata is null");
+        int dataVersion = getDataVersion(entry, metadata);
+        return new MinecraftVersionEntry(
+            entry.getVersion(),
+            dataVersion,
+            entry.getReleaseDate(),
+            entry.getUrl(),
+            metadata.downloads.client.url
+        );
+    }
+
+    private int getDataVersion(MinecraftVersionEntry entry, MinecraftMetadata metadata) {
         if (KNOWN_DATA_VERSIONS.containsKey(entry.getVersion())) {
             return KNOWN_DATA_VERSIONS.get(entry.getVersion());
         }
         LOGGER.info(() -> "[" + entry.getVersion() + "] Starting load for data version");
         byte[] minecraftJarBytes;
         try {
-            minecraftJarBytes = getMinecraftJarBytes(entry);
+            minecraftJarBytes = getMinecraftJarBytes(entry, metadata);
         } catch (RestClientException e) {
             throw new DownloadException(DownloadException.Kind.IO_ERROR, e);
         }
@@ -118,14 +131,12 @@ public class DataVersionLoader {
         }
     }
 
-    private byte[] getMinecraftJarBytes(MinecraftVersionEntry entry) {
-        var metadata = restTemplate.getForObject(entry.getUrl(), MinecraftMetadata.class);
-        Objects.requireNonNull(metadata, "metadata is null");
+    private byte[] getMinecraftJarBytes(MinecraftVersionEntry entry, MinecraftMetadata metadata) {
         var smallestEntry = Stream.of(metadata.downloads.client, metadata.downloads.server)
             .filter(Objects::nonNull)
             .min(Comparator.comparing(Download::size))
             .orElseThrow();
-        LOGGER.info(() -> "[" + entry.getVersion() + "] JAR url is " + smallestEntry.url);
+        LOGGER.info(() -> "[" + entry.getVersion() + "] Smallest JAR url is " + smallestEntry.url);
         byte[] jarBytes = restTemplate.getForObject(smallestEntry.url, byte[].class);
         Objects.requireNonNull(jarBytes, "jarBytes is null");
         if (jarBytes.length != smallestEntry.size) {
