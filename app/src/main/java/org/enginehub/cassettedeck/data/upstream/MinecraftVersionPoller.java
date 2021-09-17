@@ -27,6 +27,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
@@ -73,7 +75,10 @@ public class MinecraftVersionPoller {
         for (VersionManifest.Version next : needed.values()) {
             LOGGER.info(() -> "Adding " + next.id() + " to the database");
             batch.add(new MinecraftVersionEntry(
-                next.id(), null, next.releaseTime(), next.url()
+                next.id(),
+                null,
+                next.releaseTime(),
+                URLDecoder.decode(next.url(), StandardCharsets.UTF_8)
             ));
         }
         minecraftVersionService.insert(batch);

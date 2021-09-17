@@ -23,6 +23,7 @@ import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -39,5 +40,7 @@ public interface MinecraftVersionService {
 
     void insert(List<MinecraftVersionEntry> entries);
 
-    MinecraftVersionEntry getVersion(String version);
+    @Nullable MinecraftVersionEntry getVersion(String version);
+
+    Collection<MinecraftVersionEntry> findEntryByDataVersion(int dataVersion);
 }

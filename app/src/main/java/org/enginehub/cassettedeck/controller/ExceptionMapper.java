@@ -23,6 +23,7 @@ import org.apache.logging.log4j.Logger;
 import org.enginehub.cassettedeck.exception.DownloadException;
 import org.enginehub.cassettedeck.exception.NotFoundException;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -35,6 +36,7 @@ import java.util.Map;
 public class ExceptionMapper {
     private static final Logger LOGGER = LogManager.getLogger();
 
+    // Catch-all
     @ExceptionHandler({Throwable.class})
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Map<String, String> handle(Throwable e) {
@@ -42,11 +44,23 @@ public class ExceptionMapper {
         return Map.of("code", "internal.server.error");
     }
 
+    // Client problems
+    @ExceptionHandler({MissingServletRequestParameterException.class})
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handle(MissingServletRequestParameterException e) {
+        return Map.of(
+            "code", "bad.request",
+            "missing-param", e.getParameterName()
+        );
+    }
+
     @ExceptionHandler({NotFoundException.class})
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Map<String, String> handle(NotFoundException e) {
         return Map.of("code", e.type() + ".not.found");
     }
+
+    // Upstream problems
 
     @ExceptionHandler({DownloadException.class})
     @ResponseStatus(HttpStatus.BAD_GATEWAY)

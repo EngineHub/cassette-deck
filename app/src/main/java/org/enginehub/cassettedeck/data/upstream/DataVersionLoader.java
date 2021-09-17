@@ -36,18 +36,28 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Comparator;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 @Component
 public class DataVersionLoader {
     private static final Logger LOGGER = LogManager.getLogger();
+    // Data versions not indexable automatically, but needed downstream
+    private static final Map<String, Integer> KNOWN_DATA_VERSIONS = Map.of(
+        "1.13.2", 1631,
+        "1.12.2", 1343
+    );
 
     private final ObjectMapper mapper;
     private final RestTemplate restTemplate;
 
     public DataVersionLoader(ObjectMapper mapper, RestTemplateBuilder restTemplateBuilder) {
         this.mapper = mapper;
-        this.restTemplate = restTemplateBuilder.build();
+        this.restTemplate = restTemplateBuilder
+            .defaultHeader("User-Agent", "cassette-deck")
+            .build();
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -58,6 +68,7 @@ public class DataVersionLoader {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record Downloads(
+        Download client,
         Download server
     ) {
     }
@@ -78,19 +89,23 @@ public class DataVersionLoader {
     }
 
     public int load(MinecraftVersionEntry entry) throws DownloadException {
+        if (KNOWN_DATA_VERSIONS.containsKey(entry.getVersion())) {
+            return KNOWN_DATA_VERSIONS.get(entry.getVersion());
+        }
         LOGGER.info(() -> "[" + entry.getVersion() + "] Starting load for data version");
-        byte[] serverJarBytes;
+        byte[] minecraftJarBytes;
         try {
-            serverJarBytes = getServerJarBytes(entry);
+            minecraftJarBytes = getMinecraftJarBytes(entry);
         } catch (RestClientException e) {
             throw new DownloadException(DownloadException.Kind.IO_ERROR, e);
         }
-        LOGGER.info(() -> "[" + entry.getVersion() + "] Downloaded + verified server JAR bytes");
-        try {
-            var zf = new ZipFile(new SeekableInMemoryByteChannel(serverJarBytes));
+        LOGGER.info(() -> "[" + entry.getVersion() + "] Downloaded + verified Minecraft JAR bytes");
+        try (var zf = new ZipFile(new SeekableInMemoryByteChannel(minecraftJarBytes))) {
             ZipArchiveEntry versionJsonEntry = zf.getEntry("version.json");
             if (versionJsonEntry == null) {
-                throw new IllegalStateException("JAR is missing version.json");
+                // This is expected.
+                LOGGER.info(() -> "[" + entry.getVersion() + "] Missing version.json, entering -1");
+                return -1;
             }
             var versionData = mapper.readValue(
                 zf.getInputStream(versionJsonEntry).readAllBytes(),
@@ -103,26 +118,31 @@ public class DataVersionLoader {
         }
     }
 
-    private byte[] getServerJarBytes(MinecraftVersionEntry entry) {
+    private byte[] getMinecraftJarBytes(MinecraftVersionEntry entry) {
         var metadata = restTemplate.getForObject(entry.getUrl(), MinecraftMetadata.class);
         Objects.requireNonNull(metadata, "metadata is null");
-        byte[] serverJarBytes = restTemplate.getForObject(metadata.downloads.server.url, byte[].class);
-        Objects.requireNonNull(serverJarBytes, "serverJarBytes is null");
-        if (serverJarBytes.length != metadata.downloads.server.size) {
+        var smallestEntry = Stream.of(metadata.downloads.client, metadata.downloads.server)
+            .filter(Objects::nonNull)
+            .min(Comparator.comparing(Download::size))
+            .orElseThrow();
+        LOGGER.info(() -> "[" + entry.getVersion() + "] JAR url is " + smallestEntry.url);
+        byte[] jarBytes = restTemplate.getForObject(smallestEntry.url, byte[].class);
+        Objects.requireNonNull(jarBytes, "jarBytes is null");
+        if (jarBytes.length != smallestEntry.size) {
             throw new DownloadException(
                 DownloadException.Kind.LENGTH_MISMATCH,
-                new AssertionError(serverJarBytes.length + " != " + metadata.downloads.server.size)
+                new AssertionError(jarBytes.length + " != " + smallestEntry.size)
             );
         }
         // Mojang uses sha1, we have to as well
         @SuppressWarnings("deprecation")
-        var localSha1 = Hashing.sha1().hashBytes(serverJarBytes).toString();
-        if (!localSha1.equals(metadata.downloads.server.sha1)) {
+        var localSha1 = Hashing.sha1().hashBytes(jarBytes).toString();
+        if (!localSha1.equals(smallestEntry.sha1)) {
             throw new DownloadException(
                 DownloadException.Kind.HASH_MISMATCH,
-                new AssertionError(localSha1 + " != " + metadata.downloads.server.sha1)
+                new AssertionError(localSha1 + " != " + smallestEntry.sha1)
             );
         }
-        return serverJarBytes;
+        return jarBytes;
     }
 }

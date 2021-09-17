@@ -20,6 +20,7 @@ package org.enginehub.cassettedeck.controller;
 
 import org.enginehub.cassettedeck.data.downstream.Cursor;
 import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
+import org.enginehub.cassettedeck.exception.NotFoundException;
 import org.enginehub.cassettedeck.service.MinecraftVersionService;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/minecraft-versions")
@@ -55,12 +58,32 @@ public class MinecraftVersionController {
     /**
      * Get information about a particular version.
      *
-     * @return the current cursor contents
+     * @return the version info
      */
     @GetMapping("/{version}")
     public MinecraftVersionEntry getMinecraftVersion(
         @PathVariable String version
     ) {
-        return versionService.getVersion(version);
+        var entry = versionService.getVersion(version);
+        if (entry == null) {
+            throw new NotFoundException("minecraft-version");
+        }
+        return entry;
+    }
+
+    /**
+     * Get information about a particular version, by data version.
+     *
+     * <p>
+     * May return multiple results.
+     * </p>
+     *
+     * @return the version info
+     */
+    @GetMapping("/find")
+    public Collection<MinecraftVersionEntry> getMinecraftVersionByDataVersion(
+        @RequestParam int dataVersion
+    ) {
+        return versionService.findEntryByDataVersion(dataVersion);
     }
 }
