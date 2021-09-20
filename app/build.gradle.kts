@@ -74,8 +74,12 @@ dependencies {
 
 application {
     mainClass.set("org.enginehub.cassettedeck.CassetteDeck")
-    applicationDefaultJvmArgs =
-        listOf("-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector")
+    applicationDefaultJvmArgs = listOf(
+        "-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector",
+        "-Xms64M",
+        "-Xmx4G",
+        "-XX:G1PeriodicGCInterval=1000"
+    )
 }
 
 tasks.named<JavaExec>("run") {
