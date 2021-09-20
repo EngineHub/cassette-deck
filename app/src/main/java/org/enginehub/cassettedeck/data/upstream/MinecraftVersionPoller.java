@@ -49,7 +49,7 @@ public class MinecraftVersionPoller {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private final Semaphore loadingLimit = new Semaphore(12);
+    private final Semaphore loadingLimit = new Semaphore(4);
     private final MinecraftVersionService minecraftVersionService;
     private final BlockStatesService blockStatesService;
     private final RestTemplate restTemplate;
