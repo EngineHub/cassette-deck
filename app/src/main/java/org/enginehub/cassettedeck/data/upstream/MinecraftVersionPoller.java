@@ -21,13 +21,16 @@ package org.enginehub.cassettedeck.data.upstream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
+import org.enginehub.cassettedeck.service.BlockStatesService;
 import org.enginehub.cassettedeck.service.MinecraftVersionService;
+import org.enginehub.cassettedeck.util.BlockStateConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -48,16 +51,19 @@ public class MinecraftVersionPoller {
 
     private final Semaphore loadingLimit = new Semaphore(12);
     private final MinecraftVersionService minecraftVersionService;
+    private final BlockStatesService blockStatesService;
     private final RestTemplate restTemplate;
     private final ExtraMetadataLoader loader;
     private final Executor workExecutor;
 
     public MinecraftVersionPoller(MinecraftVersionService minecraftVersionService,
-                                  RestTemplateBuilder restTemplateBuilder,
+                                  BlockStatesService blockStatesService,
+                                  RestTemplate restTemplate,
                                   ExtraMetadataLoader loader,
                                   @Qualifier("applicationTaskExecutor") Executor workExecutor) {
         this.minecraftVersionService = minecraftVersionService;
-        this.restTemplate = restTemplateBuilder.build();
+        this.blockStatesService = blockStatesService;
+        this.restTemplate = restTemplate;
         this.loader = loader;
         this.workExecutor = workExecutor;
     }
@@ -88,16 +94,36 @@ public class MinecraftVersionPoller {
             try {
                 var future = CompletableFuture.runAsync(() -> {
                     LOGGER.info(() -> "[" + next.id() + "] Starting metadata filling");
-                    var fullEntry = loader.load(new MinecraftVersionEntry(
+                    var result = loader.load(new MinecraftVersionEntry(
                         next.id(),
                         null,
                         next.releaseTime(),
                         URLDecoder.decode(next.url(), StandardCharsets.UTF_8),
-                        null
+                        null,
+                        false
                     ));
+                    if (result.fullEntry().hasDataGenInfo()) {
+                        Objects.requireNonNull(result.blockStates(), "Has Data Gen, but no block states given");
+                        LOGGER.info(() -> "[" + next.id() + "] Storing block state JSON file");
+                        try {
+                            blockStatesService.setBlockStates(
+                                result.fullEntry().dataVersion(),
+                                BlockStateConverter.convert(result.blockStates())
+                            );
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    }
                     LOGGER.info(() -> "[" + next.id() + "] Inserting into database");
-                    minecraftVersionService.insert(List.of(fullEntry));
+                    minecraftVersionService.insert(List.of(result.fullEntry()));
                 }, workExecutor);
+                future.whenComplete((__, ex) -> {
+                    if (ex != null) {
+                        LOGGER.warn(() -> "[" + next.id() + "] Failed to load version", ex);
+                    } else {
+                        LOGGER.info(() -> "[" + next.id() + "] Fully loaded!");
+                    }
+                });
                 // Ensure this gets released no matter what
                 future.whenComplete((__, ___) -> loadingLimit.release());
             } catch (Throwable t) {

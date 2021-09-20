@@ -81,7 +81,7 @@ public class MinecraftVersionController {
      * @return the version info
      */
     @GetMapping("/find")
-    public Collection<MinecraftVersionEntry> getMinecraftVersionByDataVersion(
+    public Collection<MinecraftVersionEntry> findMinecraftVersionsByDataVersion(
         @RequestParam int dataVersion
     ) {
         return versionService.findEntryByDataVersion(dataVersion);

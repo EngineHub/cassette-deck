@@ -18,13 +18,42 @@
 
 package org.enginehub.cassettedeck;
 
+import com.google.common.net.HttpHeaders;
+import org.enginehub.cassettedeck.data.blob.BlobStorage;
+import org.enginehub.cassettedeck.data.blob.DiskStorage;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.web.client.RestTemplate;
+
+import java.nio.file.Path;
 
 @Configuration
 @PropertySource("classpath:application.properties")
 @PropertySource("classpath:secret-application.properties")
 @EnableScheduling
 public class AppConfig {
+    @Bean
+    public RestTemplate restTemplate(RestTemplateBuilder restTemplateBuilder) {
+        return restTemplateBuilder
+            .defaultHeader(HttpHeaders.USER_AGENT, "cassette-deck")
+            .build();
+    }
+
+    @Bean("library")
+    public BlobStorage libraryBlobStorage(
+        @Value("${disk.library.storage-dir}") Path storageDir
+    ) {
+        return new DiskStorage(storageDir);
+    }
+
+    @Bean("blockStateData")
+    public BlobStorage blockStateDataBlobStorage(
+        @Value("${disk.block-state-data.storage-dir}") Path storageDir
+    ) {
+        return new DiskStorage(storageDir);
+    }
 }

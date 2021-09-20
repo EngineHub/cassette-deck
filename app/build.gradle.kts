@@ -104,12 +104,17 @@ jooq {
                                 includeExpression = "release_date"
                             }
                         )
+                        forcedTypes.add(
+                            ForcedType().apply {
+                                name = "BOOLEAN"
+                                includeExpression = "has_.*"
+                            }
+                        )
                     }
                     generate.apply {
                         isDeprecated = false
                         isDaos = true
-                        // https://github.com/jOOQ/jOOQ/pull/12441
-                        isPojosAsJavaRecordClasses = false
+                        isPojosAsJavaRecordClasses = true
                         isFluentSetters = false
                     }
                     target.apply {

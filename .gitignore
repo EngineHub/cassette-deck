@@ -8,6 +8,8 @@ build
 secret-application.properties
 # Secret DB
 database.sqlite
+# Storage for local dev
+app/storage
 
 # Log files
 *.log
