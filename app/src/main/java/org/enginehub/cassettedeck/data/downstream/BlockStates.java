@@ -1,7 +1,9 @@
 package org.enginehub.cassettedeck.data.downstream;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.fasterxml.jackson.annotation.JsonValue;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,6 +32,12 @@ public record BlockStates(
             ENUM,
             DIRECTION,
             BOOLEAN,
+            ;
+
+            @JsonValue
+            public String jacksonName() {
+                return name().toLowerCase(Locale.ROOT);
+            }
         }
     }
 }
