@@ -82,6 +82,16 @@ tasks.named<JavaExec>("run") {
     workingDir(".")
 }
 
+tasks.register<Exec>("createDatabase") {
+    val initSql = file("./src/main/sql/init.sql")
+    inputs.file(initSql)
+    outputs.file("./storage/database.sqlite")
+    onlyIf { outputs.files.any { !it.exists() } }
+    description = "Create the application database if it's missing"
+    workingDir = file("./storage")
+    commandLine("sqlite3", "database.sqlite", "-bail", "-init", initSql)
+}
+
 jooq {
     version.set(libs.versions.jooq)
 
@@ -91,7 +101,7 @@ jooq {
                 logging = org.jooq.meta.jaxb.Logging.WARN
                 jdbc.apply {
                     driver = "org.sqlite.JDBC"
-                    url = "jdbc:sqlite:./database.sqlite"
+                    url = "jdbc:sqlite:./storage/database.sqlite"
                 }
                 generator.apply {
                     name = "org.jooq.codegen.JavaGenerator"
@@ -128,7 +138,8 @@ jooq {
 }
 
 tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
-    inputs.file("./database.sqlite")
+    dependsOn("createDatabase")
+    inputs.file("./storage/database.sqlite")
     allInputsDeclared.set(true)
 }
 
