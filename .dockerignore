@@ -1,0 +1,6 @@
+.gradle
+.idea
+build/
+secret-application.properties
+database.sqlite
+app/storage
