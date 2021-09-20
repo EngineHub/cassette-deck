@@ -33,7 +33,6 @@ import java.nio.file.Path;
 
 @Configuration
 @PropertySource("classpath:application.properties")
-@PropertySource("classpath:secret-application.properties")
 @EnableScheduling
 public class AppConfig {
     @Bean

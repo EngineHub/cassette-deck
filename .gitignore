@@ -4,8 +4,6 @@
 # Ignore Gradle build output directory
 build
 
-# Secret details for local dev
-secret-application.properties
 # Secret DB
 database.sqlite
 # Storage for local dev
