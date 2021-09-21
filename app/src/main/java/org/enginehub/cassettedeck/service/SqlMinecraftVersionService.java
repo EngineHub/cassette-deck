@@ -21,11 +21,11 @@ package org.enginehub.cassettedeck.service;
 import org.enginehub.cassettedeck.data.downstream.Cursor;
 import org.enginehub.cassettedeck.db.gen.tables.daos.MinecraftVersionDao;
 import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
+import org.enginehub.cassettedeck.db.gen.tables.records.MinecraftVersionRecord;
 import org.jetbrains.annotations.Nullable;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record1;
-import org.jooq.Record2;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
@@ -65,24 +65,23 @@ public class SqlMinecraftVersionService implements MinecraftVersionService {
     }
 
     @Override
-    public Cursor<String, Instant> getAllVersions(@Nullable Instant beforeDate, int limit) {
+    public Cursor<MinecraftVersionEntry, Instant> getAllVersions(@Nullable Instant beforeDate, int limit) {
         Condition condition = DSL.trueCondition();
         if (beforeDate != null) {
             condition = condition.and(MINECRAFT_VERSION.RELEASE_DATE.lessThan(beforeDate));
         }
-        var results = new ArrayList<String>(limit);
+        var results = new ArrayList<MinecraftVersionEntry>(limit);
         Instant lastDate = null;
-        try (var cursor = dslContext.select(MINECRAFT_VERSION.VERSION, MINECRAFT_VERSION.RELEASE_DATE)
-            .from(MINECRAFT_VERSION)
+        try (var cursor = dslContext.selectFrom(MINECRAFT_VERSION)
             .where(condition)
             .orderBy(MINECRAFT_VERSION.RELEASE_DATE.desc())
             .limit(limit)
             .fetchLazy()) {
             for (var iterator = cursor.iterator(); iterator.hasNext(); ) {
-                Record2<String, Instant> record = iterator.next();
-                results.add(record.value1());
+                MinecraftVersionRecord record = iterator.next();
+                results.add(dao.mapper().map(record));
                 if (!iterator.hasNext()) {
-                    lastDate = record.value2();
+                    lastDate = record.getReleaseDate();
                 }
             }
         }

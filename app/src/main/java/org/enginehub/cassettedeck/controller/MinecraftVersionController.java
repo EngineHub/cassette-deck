@@ -48,7 +48,7 @@ public class MinecraftVersionController {
      * @return the current cursor contents
      */
     @GetMapping("/list")
-    public Cursor<String, Instant> listMinecraftVersions(
+    public Cursor<MinecraftVersionEntry, Instant> listMinecraftVersions(
         @RequestParam(required = false) @Nullable Instant before,
         @RequestParam(defaultValue = "100") int limit
     ) {

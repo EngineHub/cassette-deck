@@ -36,7 +36,7 @@ public interface MinecraftVersionService {
      */
     Set<String> findMissingVersions(Set<String> knownVersions);
 
-    Cursor<String, Instant> getAllVersions(@Nullable Instant beforeDate, int limit);
+    Cursor<MinecraftVersionEntry, Instant> getAllVersions(@Nullable Instant beforeDate, int limit);
 
     void insert(List<MinecraftVersionEntry> entries);
 
