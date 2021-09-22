@@ -18,7 +18,6 @@
 
 package org.enginehub.cassettedeck.data.downstream;
 
-import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 import java.util.Locale;
@@ -26,8 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 public record BlockStates(
-    @JsonUnwrapped
-    Map<String, BlockStateData> mapping
+    Map<String, BlockStateData> blocks
 ) {
     public record BlockStateData(
         BlockState defaultState,
