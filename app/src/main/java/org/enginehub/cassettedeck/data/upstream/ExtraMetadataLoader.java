@@ -89,7 +89,8 @@ public class ExtraMetadataLoader {
         var metadata = restTemplate.getForObject(entry.url(), MinecraftMetadata.class);
         Objects.requireNonNull(metadata, "metadata is null");
         LOGGER.info(() -> "[" + entry.version() + "] Starting load for JAR bytes");
-        boolean doDataGen = "release".equals(metadata.type()) && entry.releaseDate().isAfter(DATA_GEN_AFTER);
+        boolean doDataGen = metadata.type() == MinecraftVersionType.RELEASE
+            && entry.releaseDate().isAfter(DATA_GEN_AFTER);
         byte[] minecraftJarBytes;
         try {
             // We need the client if we're doing data gen
@@ -131,6 +132,7 @@ public class ExtraMetadataLoader {
                 entry.releaseDate(),
                 entry.url(),
                 metadata.downloads().client().url(),
+                entry.type(),
                 doDataGen
             ),
             blockStates

@@ -31,12 +31,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 public class DataGeneratorExecutor {
     private static final String JAVA_EXECUTABLE = ProcessHandle.current().info().command()
         .orElseThrow(() -> new IllegalStateException("Don't know the java executable for this process"));
+    private static final Lock GENERATOR_LOCK = new ReentrantLock();
 
     @Component
     public record Config(
@@ -45,7 +47,6 @@ public class DataGeneratorExecutor {
     ) {
     }
 
-    private final Semaphore generatorLimit = new Semaphore(1);
     private final Config config;
     private final MinecraftMetadata metadata;
     private final MinecraftMetadata.Download client;
@@ -91,19 +92,22 @@ public class DataGeneratorExecutor {
     }
 
     public MojangBlockStates generateBlockStates() throws IOException {
-        generatorLimit.acquireUninterruptibly();
-        Path tempFolder = Files.createTempDirectory("cassette-deck-blockstategen");
-        tempFolder.toFile().deleteOnExit();
+        GENERATOR_LOCK.lock();
         try {
-            runGenerator("--reports", "--output", tempFolder.toAbsolutePath().toString());
-            return new MojangBlockStates(config.mapper().readValue(
-                tempFolder.resolve("reports/blocks.json").toFile(),
-                new TypeReference<>() {
-                }
-            ));
+            Path tempFolder = Files.createTempDirectory("cassette-deck-blockstategen");
+            tempFolder.toFile().deleteOnExit();
+            try {
+                runGenerator("--reports", "--output", tempFolder.toAbsolutePath().toString());
+                return new MojangBlockStates(config.mapper().readValue(
+                    tempFolder.resolve("reports/blocks.json").toFile(),
+                    new TypeReference<>() {
+                    }
+                ));
+            } finally {
+                FileSystemUtils.deleteRecursively(tempFolder);
+            }
         } finally {
-            generatorLimit.release();
-            FileSystemUtils.deleteRecursively(tempFolder);
+            GENERATOR_LOCK.unlock();
         }
     }
 }

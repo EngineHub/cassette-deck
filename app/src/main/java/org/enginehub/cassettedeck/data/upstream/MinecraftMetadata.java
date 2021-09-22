@@ -28,8 +28,9 @@ import java.util.Objects;
 public record MinecraftMetadata(
     Downloads downloads,
     List<Library> libraries,
-    String type
+    MinecraftVersionType type
 ) {
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Downloads(
         Download client,

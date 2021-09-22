@@ -18,21 +18,19 @@
 
 package org.enginehub.cassettedeck.data.upstream;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonValue;
 
-import java.time.Instant;
-import java.util.List;
+import java.util.Locale;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record VersionManifest(
-    List<Version> versions
-) {
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Version(
-        String id,
-        MinecraftVersionType type,
-        Instant releaseTime,
-        String url
-    ) {
+public enum MinecraftVersionType {
+    RELEASE,
+    SNAPSHOT,
+    OLD_BETA,
+    OLD_ALPHA,
+    ;
+
+    @JsonValue
+    public String jacksonName() {
+        return name().toLowerCase(Locale.ROOT);
     }
 }

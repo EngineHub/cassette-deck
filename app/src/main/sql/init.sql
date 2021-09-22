@@ -5,6 +5,7 @@ CREATE TABLE minecraft_version
     release_date      TEXT,
     url               TEXT,
     client_jar_url    TEXT,
+    type              TEXT,
     has_data_gen_info INTEGER
 );
 
