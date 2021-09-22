@@ -18,9 +18,13 @@
 
 package org.enginehub.cassettedeck;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.filter.ShallowEtagHeaderFilter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import javax.servlet.Filter;
 
 @Configuration
 public class AppWebConfig implements WebMvcConfigurer {
@@ -32,5 +36,10 @@ public class AppWebConfig implements WebMvcConfigurer {
             .allowedHeaders("*")
             .allowCredentials(true)
             .maxAge(7200);
+    }
+
+    @Bean
+    public Filter etagFilter() {
+        return new ShallowEtagHeaderFilter();
     }
 }
