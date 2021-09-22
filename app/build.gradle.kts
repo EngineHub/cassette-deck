@@ -77,7 +77,7 @@ application {
     applicationDefaultJvmArgs = listOf(
         "-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector",
         "-Xms64M",
-        "-Xmx4G",
+        "-Xmx512M",
         "-XX:G1PeriodicGCInterval=1000"
     )
 }

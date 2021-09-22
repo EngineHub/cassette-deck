@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Objects;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record MinecraftMetadata(
@@ -43,6 +44,17 @@ public record MinecraftMetadata(
         String url,
         @Nullable String path
     ) {
+        public Download fillInPath(String mcVersion, String name) {
+            return new MinecraftMetadata.Download(
+                sha1(),
+                size(),
+                url(),
+                Objects.requireNonNullElseGet(
+                    path(),
+                    () -> mcVersion + "/" + name + "-" + sha1() + ".jar"
+                )
+            );
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

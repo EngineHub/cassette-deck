@@ -20,20 +20,24 @@ package org.enginehub.cassettedeck.data.upstream;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.enginehub.cassettedeck.jexec.InMemoryClassLoader;
-import org.enginehub.cassettedeck.jexec.LibraryStorage;
+import com.google.common.collect.ImmutableList;
+import org.enginehub.cassettedeck.data.blob.LibraryStorage;
 import org.springframework.stereotype.Component;
 import org.springframework.util.FileSystemUtils;
 
+import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Semaphore;
+import java.util.stream.Collectors;
 
 public class DataGeneratorExecutor {
+    private static final String JAVA_EXECUTABLE = ProcessHandle.current().info().command()
+        .orElseThrow(() -> new IllegalStateException("Don't know the java executable for this process"));
+
     @Component
     public record Config(
         ObjectMapper mapper,
@@ -44,42 +48,45 @@ public class DataGeneratorExecutor {
     private final Semaphore generatorLimit = new Semaphore(1);
     private final Config config;
     private final MinecraftMetadata metadata;
-    private final byte[] clientJar;
+    private final MinecraftMetadata.Download client;
 
-    public DataGeneratorExecutor(Config config, MinecraftMetadata metadata, byte[] clientJar) {
+    public DataGeneratorExecutor(Config config, MinecraftMetadata metadata, MinecraftMetadata.Download client) {
         this.config = config;
         this.metadata = metadata;
-        this.clientJar = clientJar;
+        this.client = client;
     }
 
-    private InMemoryClassLoader prepareClassLoader() throws IOException {
-        var jars = new ArrayList<byte[]>();
-        jars.add(clientJar);
+    private List<Path> prepareClassPath() throws IOException {
+        var jars = new ArrayList<Path>();
+        jars.add(config.libraryStorage().getLibraryJar(client));
         for (MinecraftMetadata.Library library : metadata.libraries()) {
-            jars.add(config.libraryStorage().getLibraryBytes(library.downloads().artifact()));
+            jars.add(config.libraryStorage().getLibraryJar(library.downloads().artifact()));
         }
-        return new InMemoryClassLoader("data-gen", ClassLoader.getSystemClassLoader(), jars);
+        return jars;
     }
 
     private void runGenerator(String... args) throws IOException {
-        try (InMemoryClassLoader classLoader = prepareClassLoader()) {
-            Class<?> mainClass;
-            try {
-                mainClass = Class.forName("net.minecraft.data.Main", true, classLoader);
-            } catch (ClassNotFoundException e) {
-                throw new IllegalStateException("Missing Data Generator Main class");
+        List<Path> classPath = prepareClassPath();
+        Process process = new ProcessBuilder(
+            new ImmutableList.Builder<String>()
+                .add(JAVA_EXECUTABLE)
+                .add("-Xms64M", "-Xmx4G")
+                .add("-cp")
+                .add(classPath.stream().map(String::valueOf).collect(Collectors.joining(File.pathSeparator)))
+                .add("net.minecraft.data.Main")
+                .add(args)
+                .build()
+        )
+            .inheritIO()
+            .start();
+        try {
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new IllegalStateException("Failed to run data gen, exit code " + exitCode);
             }
-            Method main;
-            try {
-                main = mainClass.getDeclaredMethod("main", String[].class);
-            } catch (NoSuchMethodException e) {
-                throw new IllegalStateException("Data Generator Main class did not have a main(String[])");
-            }
-            try {
-                main.invoke(null, (Object) args);
-            } catch (IllegalAccessException | InvocationTargetException e) {
-                throw new IllegalStateException("Failed to invoke main(String[])", e);
-            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
         }
     }
 

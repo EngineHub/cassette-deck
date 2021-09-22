@@ -43,7 +43,7 @@ public class AppConfig {
     }
 
     @Bean("library")
-    public BlobStorage libraryBlobStorage(
+    public DiskStorage libraryBlobStorage(
         @Value("${disk.library.storage-dir}") Path storageDir
     ) {
         return new DiskStorage(storageDir);

@@ -26,9 +26,9 @@ import org.apache.commons.compress.archivers.zip.ZipFile;
 import org.apache.commons.compress.utils.SeekableInMemoryByteChannel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.enginehub.cassettedeck.data.blob.LibraryStorage;
 import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.enginehub.cassettedeck.exception.DownloadException;
-import org.enginehub.cassettedeck.util.DownloadHelper;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
@@ -36,6 +36,8 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
@@ -55,15 +57,18 @@ public class ExtraMetadataLoader {
 
     private final ObjectMapper mapper;
     private final RestTemplate restTemplate;
+    private final LibraryStorage libraryStorage;
     private final DataGeneratorExecutor.Config dataGenConfig;
 
     public ExtraMetadataLoader(
         ObjectMapper mapper,
         RestTemplate restTemplate,
+        LibraryStorage libraryStorage,
         DataGeneratorExecutor.Config dataGenConfig
     ) {
         this.mapper = mapper;
         this.restTemplate = restTemplate;
+        this.libraryStorage = libraryStorage;
         this.dataGenConfig = dataGenConfig;
     }
 
@@ -108,9 +113,13 @@ public class ExtraMetadataLoader {
                 }
             }
 
-            blockStates = doDataGen
-                ? new DataGeneratorExecutor(dataGenConfig, metadata, minecraftJarBytes).generateBlockStates()
-                : null;
+            if (doDataGen) {
+                blockStates = new DataGeneratorExecutor(
+                    dataGenConfig, metadata, metadata.downloads().client().fillInPath(entry.version(), "client")
+                ).generateBlockStates();
+            } else {
+                blockStates = null;
+            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -151,17 +160,30 @@ public class ExtraMetadataLoader {
         MinecraftMetadata metadata,
         boolean forceClient
     ) {
-        MinecraftMetadata.Download chosenEntry;
+        record DownloadWithName(
+            String name,
+            MinecraftMetadata.Download download
+        ) {
+        }
+        var client = new DownloadWithName("client", metadata.downloads().client());
+        var server = new DownloadWithName("server", metadata.downloads().server());
+        DownloadWithName chosenEntry;
         if (forceClient) {
-            chosenEntry = metadata.downloads().client();
-            Objects.requireNonNull(chosenEntry, () -> "No client JAR available for " + entry.version());
+            chosenEntry = client;
+            Objects.requireNonNull(chosenEntry.download, () -> "No client JAR available for " + entry.version());
         } else {
-            chosenEntry = Stream.of(metadata.downloads().client(), metadata.downloads().server())
-                .filter(Objects::nonNull)
-                .min(Comparator.comparing(MinecraftMetadata.Download::size))
+            chosenEntry = Stream.of(client, server)
+                .filter(dwn -> dwn.download != null)
+                .min(Comparator.comparing(dwn -> dwn.download.size()))
                 .orElseThrow();
         }
-        LOGGER.info(() -> "[" + entry.version() + "] Our JAR url is " + chosenEntry.url());
-        return DownloadHelper.downloadVerifiedBytes(restTemplate, chosenEntry);
+        LOGGER.info(() -> "[" + entry.version() + "] Our JAR url is " + chosenEntry.download().url());
+        try {
+            var withPath = chosenEntry.download().fillInPath(entry.version(), chosenEntry.name());
+            Path libraryJar = libraryStorage.getLibraryJar(withPath);
+            return Files.readAllBytes(libraryJar);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 }

@@ -18,6 +18,8 @@
 
 package org.enginehub.cassettedeck.data.blob;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -51,6 +53,14 @@ public class DiskStorage implements BlobStorage {
             throw new IllegalArgumentException("Key breaks outside of storage directory: " + key);
         }
         return ourKey;
+    }
+
+    public @Nullable Path retrievePath(String key) {
+        var path = ourKey(key);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        return path;
     }
 
     @Override

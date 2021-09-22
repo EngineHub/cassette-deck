@@ -16,40 +16,39 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package org.enginehub.cassettedeck.jexec;
+package org.enginehub.cassettedeck.data.blob;
 
-import org.enginehub.cassettedeck.data.blob.BlobStorage;
 import org.enginehub.cassettedeck.data.upstream.MinecraftMetadata;
 import org.enginehub.cassettedeck.util.DownloadHelper;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Objects;
 
 @Component
 public class LibraryStorage {
-    private final BlobStorage libraryBlobStorage;
+    private final DiskStorage libraryStorage;
     private final RestTemplate restTemplate;
 
     public LibraryStorage(
-        @Qualifier("library") BlobStorage libraryBlobStorage,
+        @Qualifier("library") DiskStorage libraryStorage,
         RestTemplate restTemplate
     ) {
-        this.libraryBlobStorage = libraryBlobStorage;
+        this.libraryStorage = libraryStorage;
         this.restTemplate = restTemplate;
     }
 
-    public byte[] getLibraryBytes(MinecraftMetadata.Download download) throws IOException {
+    public Path getLibraryJar(MinecraftMetadata.Download download) throws IOException {
         if (download.path() == null) {
             throw new IllegalArgumentException("Download must give a path");
         }
-        try (var inputStream = libraryBlobStorage.storeIfAbsent(download.path(), storageStream -> {
+        libraryStorage.storeIfAbsent(download.path(), storageStream -> {
             byte[] content = DownloadHelper.downloadVerifiedBytes(restTemplate, download);
             storageStream.write(content);
-        })) {
-            return inputStream.readAllBytes();
-        }
+        }).close();
+        return Objects.requireNonNull(libraryStorage.retrievePath(download.path()), "Wasn't stored?");
     }
 }
