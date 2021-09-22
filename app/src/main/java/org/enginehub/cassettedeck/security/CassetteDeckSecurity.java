@@ -26,7 +26,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import javax.servlet.Filter;
@@ -61,7 +60,7 @@ public class CassetteDeckSecurity extends WebSecurityConfigurerAdapter {
     }
 
     private RequestMatcher getRequestMatcher() {
-        return AnyRequestMatcher.INSTANCE;
+        return request -> !"OPTIONS".equals(request.getMethod());
     }
 
     private Filter getFilter() throws Exception {
