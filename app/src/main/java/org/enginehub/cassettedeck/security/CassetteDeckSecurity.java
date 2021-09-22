@@ -20,6 +20,7 @@ package org.enginehub.cassettedeck.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -53,10 +54,8 @@ public class CassetteDeckSecurity extends WebSecurityConfigurerAdapter {
             .csrf().disable()
             .formLogin().disable()
             .logout().disable()
-            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
-            .authenticationProvider(authenticationProvider)
-            .addFilterBefore(getFilter(), AnonymousAuthenticationFilter.class).authorizeRequests()
-            .requestMatchers(getRequestMatcher()).access("hasRole('ROLE_SERVER')").and();
+            .cors(Customizer.withDefaults())
+            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and();
     }
 
     private RequestMatcher getRequestMatcher() {
