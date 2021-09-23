@@ -20,11 +20,15 @@ package org.enginehub.cassettedeck;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.CacheControl;
 import org.springframework.web.filter.ShallowEtagHeaderFilter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.mvc.WebContentInterceptor;
 
 import javax.servlet.Filter;
+import java.time.Duration;
 
 @Configuration
 public class AppWebConfig implements WebMvcConfigurer {
@@ -36,6 +40,21 @@ public class AppWebConfig implements WebMvcConfigurer {
             .allowedHeaders("*")
             .allowCredentials(true)
             .maxAge(7200);
+    }
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        var content = new WebContentInterceptor();
+        content.addCacheMapping(
+            CacheControl
+                // Refresh semi-often
+                .maxAge(Duration.ofHours(1))
+                // This data should last for a while even if the server dies
+                .staleIfError(Duration.ofDays(1))
+                .staleWhileRevalidate(Duration.ofDays(1)),
+            "/**"
+        );
+        registry.addInterceptor(content);
     }
 
     @Bean

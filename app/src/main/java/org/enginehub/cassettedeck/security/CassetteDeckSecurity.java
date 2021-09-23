@@ -55,6 +55,7 @@ public class CassetteDeckSecurity extends WebSecurityConfigurerAdapter {
             .formLogin().disable()
             .logout().disable()
             .cors(Customizer.withDefaults())
+            .headers().cacheControl().disable().and()
             .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and();
     }
 
