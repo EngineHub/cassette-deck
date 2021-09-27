@@ -40,7 +40,7 @@ public record MojangBlockStates(
     }
 
     public record BlockState(
-        Map<String, String> properties,
+        @Nullable Map<String, String> properties,
         @JsonProperty("default")
         @Nullable Boolean defaultState
     ) {

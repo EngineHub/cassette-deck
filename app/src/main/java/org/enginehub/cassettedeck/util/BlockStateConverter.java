@@ -23,6 +23,7 @@ import org.enginehub.cassettedeck.data.downstream.BlockStates;
 import org.enginehub.cassettedeck.data.upstream.MojangBlockStates;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -41,7 +42,7 @@ public class BlockStateConverter {
                 : getPropertyMap(state.properties());
             mapping.put(id, new BlockStates.BlockStateData(
                 new BlockStates.BlockState(
-                    id, defaultState.properties()
+                    id, Objects.requireNonNullElse(defaultState.properties(), Map.of())
                 ),
                 build
             ));
