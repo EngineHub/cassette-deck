@@ -10,7 +10,7 @@ plugins {
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(16))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(17))
 }
 
 tasks.withType<JavaCompile> {
@@ -65,6 +65,38 @@ dependencies {
 
     // For Log4J2 async
     runtimeOnly(libs.disruptor)
+
+    // Force 2.15
+    constraints {
+        add("implementation", "org.apache.logging.log4j:log4j-api") {
+            version {
+                strictly("[2.15, 3[")
+                prefer("2.15.0")
+            }
+            because("CVE-2021-44228: Log4j vulnerable to remote code execution")
+        }
+        add("implementation", "org.apache.logging.log4j:log4j-core") {
+            version {
+                strictly("[2.15, 3[")
+                prefer("2.15.0")
+            }
+            because("CVE-2021-44228: Log4j vulnerable to remote code execution")
+        }
+        add("implementation", "org.apache.logging.log4j:log4j-jul") {
+            version {
+                strictly("[2.15, 3[")
+                prefer("2.15.0")
+            }
+            because("CVE-2021-44228: Log4j vulnerable to remote code execution")
+        }
+        add("implementation", "org.apache.logging.log4j:log4j-slf4j-impl") {
+            version {
+                strictly("[2.15, 3[")
+                prefer("2.15.0")
+            }
+            because("CVE-2021-44228: Log4j vulnerable to remote code execution")
+        }
+    }
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(platform(libs.junit.bom))
@@ -145,6 +177,9 @@ tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
     dependsOn("createDatabase")
     inputs.file("./storage/database.sqlite")
     allInputsDeclared.set(true)
+    setJavaExecSpec {
+        executable = project.javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath
+    }
 }
 
 
