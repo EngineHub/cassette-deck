@@ -23,6 +23,8 @@ import org.enginehub.cassettedeck.exception.NotFoundException;
 import org.enginehub.cassettedeck.service.WorldEditCliDataService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,9 +41,9 @@ public class CliDataController {
     }
 
     /**
-     * Get the block states for a data version.
+     * Get the WorldEdit CLI data for a data version.
      *
-     * @return the block states
+     * @return the WE CLI data
      */
     @GetMapping("/{dataVersion}")
     public CliData getWeCliData(
@@ -53,5 +55,17 @@ public class CliDataController {
             throw new NotFoundException("we-cli-data");
         }
         return cliData;
+    }
+
+    /**
+     * Uploads a WE CLI Data file for a given data version and CLI data version.
+     */
+    @PutMapping("/{dataVersion}/{cliDataVersion}")
+    public void putWeCliData(
+        @PathVariable int dataVersion,
+        @PathVariable int cliDataVersion,
+        @RequestBody CliData cliData
+    ) throws IOException {
+        worldEditCliDataService.setCliData(dataVersion, cliDataVersion, cliData);
     }
 }
