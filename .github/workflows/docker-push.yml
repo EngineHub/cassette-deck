@@ -4,10 +4,6 @@ on:
   push:
     branches: [ 'master' ]
 
-env:
-  REGISTRY: enginehub-1.octyl.net:8427
-  IMAGE_NAME: enginehub/cassette-deck
-
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -17,12 +13,11 @@ jobs:
       - name: Login to DockerHub
         uses: docker/login-action@v1
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.EH_DOCKER_USERNAME }}
-          password: ${{ secrets.EH_DOCKER_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - name: Build and push
         id: docker_build
         uses: docker/build-push-action@v2
         with:
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: octylfractal/cassette-deck:latest
