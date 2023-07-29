@@ -56,11 +56,14 @@ public class CassetteDeckSecurity extends WebSecurityConfigurerAdapter {
             .logout().disable()
             .cors(Customizer.withDefaults())
             .headers().cacheControl().disable().and()
-            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and();
+            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
+            .authenticationProvider(authenticationProvider)
+            .addFilterBefore(getFilter(), AnonymousAuthenticationFilter.class).authorizeRequests()
+            .requestMatchers(getRequestMatcher()).access("hasRole('ROLE_SERVER')").and();
     }
 
     private RequestMatcher getRequestMatcher() {
-        return request -> !"OPTIONS".equals(request.getMethod());
+        return request -> "PUT".equals(request.getMethod());
     }
 
     private Filter getFilter() throws Exception {

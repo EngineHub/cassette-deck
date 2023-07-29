@@ -55,4 +55,11 @@ public class AppConfig {
     ) {
         return new DiskStorage(storageDir);
     }
+
+    @Bean("worldEditCliData")
+    public BlobStorage worldEditCliDataBlobStorage(
+        @Value("${disk.worldedit-cli-data.storage-dir}") Path storageDir
+    ) {
+        return new DiskStorage(storageDir);
+    }
 }

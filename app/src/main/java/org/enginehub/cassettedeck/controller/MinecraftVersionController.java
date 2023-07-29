@@ -31,7 +31,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.Collection;
-import java.util.Set;
 
 @RestController
 @RequestMapping("/minecraft-versions")
