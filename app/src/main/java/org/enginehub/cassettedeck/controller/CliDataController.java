@@ -45,10 +45,10 @@ public class CliDataController {
      *
      * @return the WE CLI data
      */
-    @GetMapping("/{dataVersion}")
+    @GetMapping("/{dataVersion}/{cliDataVersion}")
     public CliData getWeCliData(
         @PathVariable int dataVersion,
-        @RequestParam(defaultValue = "1") int cliDataVersion
+        @PathVariable int cliDataVersion
     ) throws IOException {
         CliData cliData = worldEditCliDataService.getCliData(dataVersion, cliDataVersion);
         if (cliData == null) {
