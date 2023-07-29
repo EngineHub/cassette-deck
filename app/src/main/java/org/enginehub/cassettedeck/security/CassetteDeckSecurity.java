@@ -18,55 +18,48 @@
 
 package org.enginehub.cassettedeck.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.config.Customizer;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
-import org.springframework.security.web.util.matcher.RequestMatcher;
-
-import javax.servlet.Filter;
 
 @Configuration
 @EnableWebSecurity
-public class CassetteDeckSecurity extends WebSecurityConfigurerAdapter {
-    private final ObjectMapper mapper;
-    private final DatabaseAuthenticationProvider authenticationProvider;
-
-    public CassetteDeckSecurity(ObjectMapper mapper,
-                                DatabaseAuthenticationProvider authenticationProvider) {
-        this.mapper = mapper;
-        this.authenticationProvider = authenticationProvider;
+@EnableMethodSecurity
+public class CassetteDeckSecurity {
+    @Bean
+    public AuthenticationManager authenticationManager() {
+        return authentication -> {
+            if (!authentication.isAuthenticated()) {
+                throw new BadCredentialsException("Invalid credentials");
+            }
+            return authentication;
+        };
     }
 
-    @Override
-    protected void configure(AuthenticationManagerBuilder auth) {
-        auth.authenticationProvider(authenticationProvider);
-    }
-
-    @Override
-    protected void configure(HttpSecurity http) throws Exception {
-        http.httpBasic().disable()
-            .csrf().disable()
-            .formLogin().disable()
-            .logout().disable()
+    @Bean
+    public SecurityFilterChain filterChain(
+        HttpSecurity http, CassetteDeckAccessDeniedHandler accessDeniedHandler, TokenExtractingFilter filter
+    ) throws Exception {
+        return http
+            .csrf(AbstractHttpConfigurer::disable)
+            .logout(AbstractHttpConfigurer::disable)
             .cors(Customizer.withDefaults())
-            .headers().cacheControl().disable().and()
-            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
-            .authenticationProvider(authenticationProvider)
-            .addFilterBefore(getFilter(), AnonymousAuthenticationFilter.class).authorizeRequests()
-            .requestMatchers(getRequestMatcher()).access("hasRole('ROLE_SERVER')").and();
-    }
-
-    private RequestMatcher getRequestMatcher() {
-        return request -> "PUT".equals(request.getMethod());
-    }
-
-    private Filter getFilter() throws Exception {
-        return new TokenExtractingFilter(mapper, getRequestMatcher(), authenticationManager());
+            .headers(h -> h.cacheControl(HeadersConfigurer.CacheControlConfig::disable))
+            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .addFilterBefore(filter, AnonymousAuthenticationFilter.class)
+            .exceptionHandling(e -> e.accessDeniedHandler((request, response, accessDeniedException) ->
+                accessDeniedHandler.handle(response)
+            ))
+            .build();
     }
 }

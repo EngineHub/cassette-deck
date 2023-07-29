@@ -23,6 +23,9 @@ import org.apache.logging.log4j.Logger;
 import org.enginehub.cassettedeck.exception.DownloadException;
 import org.enginehub.cassettedeck.exception.NotFoundException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -37,7 +40,7 @@ public class ExceptionMapper {
     private static final Logger LOGGER = LogManager.getLogger();
 
     // Catch-all
-    @ExceptionHandler({Throwable.class})
+    @ExceptionHandler
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Map<String, String> handle(Throwable e) {
         LOGGER.warn("Error handling request", e);
@@ -45,7 +48,7 @@ public class ExceptionMapper {
     }
 
     // Client problems
-    @ExceptionHandler({MissingServletRequestParameterException.class})
+    @ExceptionHandler
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handle(MissingServletRequestParameterException e) {
         return Map.of(
@@ -54,7 +57,33 @@ public class ExceptionMapper {
         );
     }
 
-    @ExceptionHandler({NotFoundException.class})
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handle(HttpMediaTypeNotSupportedException e) {
+        return Map.of(
+            "code", "bad.request",
+            "unsupported.content-type", String.valueOf(e.getContentType())
+        );
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.NOT_ACCEPTABLE)
+    public Map<String, Object> handle(HttpMediaTypeNotAcceptableException e) {
+        return Map.of(
+            "code", "not.acceptable",
+            "accepted.content-types", e.getSupportedMediaTypes()
+        );
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handle(HttpMessageNotReadableException e) {
+        return Map.of(
+            "code", "bad.request"
+        );
+    }
+
+    @ExceptionHandler
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Map<String, String> handle(NotFoundException e) {
         return Map.of("code", e.type() + ".not.found");
@@ -62,7 +91,7 @@ public class ExceptionMapper {
 
     // Upstream problems
 
-    @ExceptionHandler({DownloadException.class})
+    @ExceptionHandler
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Map<String, String> handle(DownloadException e) {
         LOGGER.warn("Download error occurred", e);

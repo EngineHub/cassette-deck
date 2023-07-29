@@ -20,47 +20,58 @@ package org.enginehub.cassettedeck.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.net.HttpHeaders;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.enginehub.cassettedeck.db.gen.tables.daos.AuthorizedTokenDao;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.AbstractAuthenticationProcessingFilter;
-import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
-import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
+import org.springframework.stereotype.Component;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Set;
 
+@Component
 public class TokenExtractingFilter extends AbstractAuthenticationProcessingFilter {
+    private final AuthorizedTokenDao tokenDao;
 
-    public TokenExtractingFilter(ObjectMapper mapper,
-                                 RequestMatcher requiresAuthenticationRequestMatcher,
-                                 AuthenticationManager authenticationManager) {
-        super(requiresAuthenticationRequestMatcher);
-        setAuthenticationManager(authenticationManager);
-        setAuthenticationFailureHandler((request, response, exception) -> {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            mapper.writeValue(
-                response.getWriter(),
-                Map.of("code", "access.denied")
-            );
-        });
+    public TokenExtractingFilter(
+        AuthenticationManager authenticationManager,
+        AuthorizedTokenDao tokenDao,
+        CassetteDeckAccessDeniedHandler accessDeniedHandler
+    ) {
+        super(AnyRequestMatcher.INSTANCE, authenticationManager);
+        this.tokenDao = tokenDao;
+        setAuthenticationFailureHandler((request, response, exception) -> accessDeniedHandler.handle(response));
     }
 
     @Override
     public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException {
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (header == null || !header.startsWith("Token ")) {
+        if (header == null) {
+            return new AnonymousAuthenticationToken(
+                "anonymous", "anonymous", Set.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))
+            );
+        }
+        if (!header.startsWith("Token ")) {
             throw new BadCredentialsException("Not token authorization");
         }
         var tokenString = header.substring("Token ".length());
-        var token = new PreAuthenticatedAuthenticationToken("token", tokenString);
-        return getAuthenticationManager().authenticate(token);
+        if (tokenDao.existsById(tokenString)) {
+            return new AnonymousAuthenticationToken(
+                "token", tokenString, Set.of(new SimpleGrantedAuthority("ROLE_SERVER"))
+            );
+        }
+        throw new BadCredentialsException("Invalid token");
     }
 
     @Override

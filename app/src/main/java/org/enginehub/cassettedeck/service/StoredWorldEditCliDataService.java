@@ -20,7 +20,6 @@ package org.enginehub.cassettedeck.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.enginehub.cassettedeck.data.blob.BlobStorage;
-import org.enginehub.cassettedeck.data.downstream.BlockStates;
 import org.enginehub.cassettedeck.data.downstream.CliData;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;

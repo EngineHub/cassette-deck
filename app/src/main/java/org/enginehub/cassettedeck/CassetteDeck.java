@@ -21,6 +21,7 @@
  */
 package org.enginehub.cassettedeck;
 
+import org.apache.logging.log4j.LogManager;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration;
@@ -34,6 +35,12 @@ public class CassetteDeck {
     public static void main(String[] args) {
         System.setProperty("org.jooq.no-logo", "true");
         System.setProperty("org.jooq.no-tips", "true");
-        SpringApplication.run(CassetteDeck.class, args);
+        try {
+            SpringApplication.run(CassetteDeck.class, args);
+        } catch (Throwable t) {
+            // Spring replaced the uncaught exception handler, so we need to do this manually.
+            LogManager.getLogger().error("Uncaught exception", t);
+            throw t;
+        }
     }
 }

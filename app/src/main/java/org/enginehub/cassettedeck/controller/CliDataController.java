@@ -21,12 +21,9 @@ package org.enginehub.cassettedeck.controller;
 import org.enginehub.cassettedeck.data.downstream.CliData;
 import org.enginehub.cassettedeck.exception.NotFoundException;
 import org.enginehub.cassettedeck.service.WorldEditCliDataService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.annotation.Secured;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 
@@ -60,6 +57,7 @@ public class CliDataController {
      * Uploads a WE CLI Data file for a given data version and CLI data version.
      */
     @PutMapping("/{dataVersion}/{cliDataVersion}")
+    @PreAuthorize("hasRole('ROLE_SERVER')")
     public void putWeCliData(
         @PathVariable int dataVersion,
         @PathVariable int cliDataVersion,

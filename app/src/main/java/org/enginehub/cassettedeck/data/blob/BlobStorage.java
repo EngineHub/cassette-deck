@@ -34,7 +34,7 @@ public interface BlobStorage {
      * If there is no blob for the given key, use {@code consumer} to fill it, then return a stream to get the contents
      * of the blob.
      *
-     * @param key the key
+     * @param key      the key
      * @param consumer the blob provider
      * @return the content of the blob
      * @throws IOException if there is an I/O error
