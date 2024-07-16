@@ -103,7 +103,11 @@ public class ExtraMetadataLoader {
         int dataVersion;
         MojangBlockStates blockStates;
         try {
-            try (var zf = new ZipFile(new SeekableInMemoryByteChannel(minecraftJarBytes))) {
+            try (
+                var zf = ZipFile.builder()
+                    .setSeekableByteChannel(new SeekableInMemoryByteChannel(minecraftJarBytes))
+                    .get()
+            ) {
                 dataVersion = getDataVersion(entry, zf);
                 if (doDataGen) {
                     if (zf.getEntry("net/minecraft/data/Main.class") == null) {

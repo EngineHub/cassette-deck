@@ -11,4 +11,4 @@ if ! [ -f storage/database.sqlite ]; then
     done
   fi
 fi
-./bin/app "$@"
+exec ./bin/app "$@"

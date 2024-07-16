@@ -21,6 +21,8 @@ package org.enginehub.cassettedeck.data.upstream;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.enginehub.cassettedeck.data.blob.LibraryStorage;
 import org.springframework.stereotype.Component;
 import org.springframework.util.FileSystemUtils;
@@ -36,6 +38,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 public class DataGeneratorExecutor {
+    private static final Logger LOGGER = LogManager.getLogger();
     private static final String JAVA_EXECUTABLE = ProcessHandle.current().info().command()
         .orElseThrow(() -> new IllegalStateException("Don't know the java executable for this process"));
     private static final Lock GENERATOR_LOCK = new ReentrantLock();
@@ -68,7 +71,7 @@ public class DataGeneratorExecutor {
 
     private void runGenerator(String... args) throws IOException {
         List<Path> classPath = prepareClassPath();
-        Process process = new ProcessBuilder(
+        ProcessBuilder processBuilder = new ProcessBuilder(
             new ImmutableList.Builder<String>()
                 .add(JAVA_EXECUTABLE)
                 .add("-Xms64M", "-Xmx4G")
@@ -78,8 +81,9 @@ public class DataGeneratorExecutor {
                 .add(args)
                 .build()
         )
-            .inheritIO()
-            .start();
+            .inheritIO();
+        LOGGER.info("Running data gen: {}", processBuilder.command());
+        Process process = processBuilder.start();
         try {
             int exitCode = process.waitFor();
             if (exitCode != 0) {
