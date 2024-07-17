@@ -18,27 +18,36 @@
 
 package org.enginehub.cassettedeck;
 
-import com.google.common.net.HttpHeaders;
-import org.enginehub.cassettedeck.data.blob.BlobStorage;
 import org.enginehub.cassettedeck.data.blob.DiskStorage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.http.HttpClient;
 import java.nio.file.Path;
+import java.time.Duration;
 
 @Configuration
 @PropertySource("classpath:application.properties")
 @EnableScheduling
 public class AppConfig {
     @Bean
+    public HttpClient httpClient() {
+        return HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    }
+
+    @Bean
     public RestTemplate restTemplate(RestTemplateBuilder restTemplateBuilder) {
         return restTemplateBuilder
-            .defaultHeader(HttpHeaders.USER_AGENT, "cassette-deck")
+            .defaultHeader(HttpHeaders.USER_AGENT, CassetteDeck.USER_AGENT)
             .build();
     }
 
@@ -50,14 +59,14 @@ public class AppConfig {
     }
 
     @Bean("blockStateData")
-    public BlobStorage blockStateDataBlobStorage(
+    public DiskStorage blockStateDataBlobStorage(
         @Value("${disk.block-state-data.storage-dir}") Path storageDir
     ) {
         return new DiskStorage(storageDir);
     }
 
     @Bean("worldEditCliData")
-    public BlobStorage worldEditCliDataBlobStorage(
+    public DiskStorage worldEditCliDataBlobStorage(
         @Value("${disk.worldedit-cli-data.storage-dir}") Path storageDir
     ) {
         return new DiskStorage(storageDir);

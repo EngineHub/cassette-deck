@@ -52,7 +52,7 @@ public record MinecraftMetadata(
                 url(),
                 Objects.requireNonNullElseGet(
                     path(),
-                    () -> mcVersion + "/" + name + "-" + sha1() + ".jar"
+                    () -> "net/minecraft/minecraft/" + mcVersion + "/" + name + "-" + sha1() + ".jar"
                 )
             );
         }

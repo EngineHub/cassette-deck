@@ -21,6 +21,7 @@ package org.enginehub.cassettedeck.data.upstream;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import org.apache.commons.io.function.IOConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.enginehub.cassettedeck.data.blob.LibraryStorage;
@@ -31,17 +32,15 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 
 public class DataGeneratorExecutor {
     private static final Logger LOGGER = LogManager.getLogger();
     private static final String JAVA_EXECUTABLE = ProcessHandle.current().info().command()
         .orElseThrow(() -> new IllegalStateException("Don't know the java executable for this process"));
-    private static final Lock GENERATOR_LOCK = new ReentrantLock();
+    private static final Semaphore GENERATOR_LOCK = new Semaphore(8);
 
     @Component
     public record Config(
@@ -60,43 +59,51 @@ public class DataGeneratorExecutor {
         this.client = client;
     }
 
-    private List<Path> prepareClassPath() throws IOException {
-        var jars = new ArrayList<Path>();
-        jars.add(config.libraryStorage().getLibraryJar(client));
-        for (MinecraftMetadata.Library library : metadata.libraries()) {
-            jars.add(config.libraryStorage().getLibraryJar(library.downloads().artifact()));
-        }
-        return jars;
+    private void useClassPath(IOConsumer<List<Path>> consumer) throws IOException {
+        var list = ImmutableList. <MinecraftMetadata.Download> builderWithExpectedSize(1 + metadata.libraries().size())
+            .add(client)
+            .addAll(metadata.libraries().stream().map(l -> l.downloads().artifact()).collect(Collectors.toList()))
+            .build();
+        config.libraryStorage().useLibraryJars(list, paths -> {
+            consumer.accept(paths);
+            return null;
+        });
     }
 
     private void runGenerator(String... args) throws IOException {
-        List<Path> classPath = prepareClassPath();
-        ProcessBuilder processBuilder = new ProcessBuilder(
-            new ImmutableList.Builder<String>()
-                .add(JAVA_EXECUTABLE)
-                .add("-Xms64M", "-Xmx4G")
-                .add("-cp")
-                .add(classPath.stream().map(String::valueOf).collect(Collectors.joining(File.pathSeparator)))
-                .add("net.minecraft.data.Main")
-                .add(args)
-                .build()
-        )
-            .inheritIO();
-        LOGGER.info("Running data gen: {}", processBuilder.command());
-        Process process = processBuilder.start();
-        try {
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                throw new IllegalStateException("Failed to run data gen, exit code " + exitCode);
+        useClassPath(classPath -> {
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                new ImmutableList.Builder<String>()
+                    .add(JAVA_EXECUTABLE)
+                    .add("-Xms64M", "-Xmx512M")
+                    .add("-cp")
+                    .add(classPath.stream().map(String::valueOf).collect(Collectors.joining(File.pathSeparator)))
+                    .add("net.minecraft.data.Main")
+                    .add(args)
+                    .build()
+            )
+                .inheritIO();
+            LOGGER.info("Running data gen: {}", processBuilder.command());
+            Process process = processBuilder.start();
+            try {
+                int exitCode = process.waitFor();
+                if (exitCode != 0) {
+                    throw new IllegalStateException("Failed to run data gen, exit code " + exitCode);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
             }
+        });
+    }
+
+    public MojangBlockStates generateBlockStates() throws IOException {
+        try {
+            GENERATOR_LOCK.acquire();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
-    }
-
-    public MojangBlockStates generateBlockStates() throws IOException {
-        GENERATOR_LOCK.lock();
         try {
             Path tempFolder = Files.createTempDirectory("cassette-deck-blockstategen");
             tempFolder.toFile().deleteOnExit();
@@ -111,7 +118,7 @@ public class DataGeneratorExecutor {
                 FileSystemUtils.deleteRecursively(tempFolder);
             }
         } finally {
-            GENERATOR_LOCK.unlock();
+            GENERATOR_LOCK.release();
         }
     }
 }

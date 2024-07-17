@@ -38,7 +38,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -49,7 +48,6 @@ public class MinecraftVersionPoller {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private final Semaphore loadingLimit = new Semaphore(12);
     private final MinecraftVersionService minecraftVersionService;
     private final BlockStatesService blockStatesService;
     private final RestTemplate restTemplate;
@@ -90,47 +88,39 @@ public class MinecraftVersionPoller {
         needed.keySet().retainAll(minecraftVersionService.findMissingVersions(needed.keySet()));
         for (VersionManifest.Version next : needed.values()) {
             LOGGER.info(() -> "[" + next.id() + "] Submitting for metadata filling");
-            loadingLimit.acquireUninterruptibly();
-            try {
-                var future = CompletableFuture.runAsync(() -> {
-                    LOGGER.info(() -> "[" + next.id() + "] Starting metadata filling");
-                    var result = loader.load(new MinecraftVersionEntry(
-                        next.id(),
-                        null,
-                        next.releaseTime(),
-                        URLDecoder.decode(next.url(), StandardCharsets.UTF_8),
-                        null,
-                        next.type().jacksonName(),
-                        false
-                    ));
-                    if (result.fullEntry().hasDataGenInfo()) {
-                        Objects.requireNonNull(result.blockStates(), "Has Data Gen, but no block states given");
-                        LOGGER.info(() -> "[" + next.id() + "] Storing block state JSON file");
-                        try {
-                            blockStatesService.setBlockStates(
-                                result.fullEntry().dataVersion(),
-                                BlockStateConverter.convert(result.blockStates())
-                            );
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
-                        }
+            var future = CompletableFuture.runAsync(() -> {
+                LOGGER.info(() -> "[" + next.id() + "] Starting metadata filling");
+                var result = loader.load(new MinecraftVersionEntry(
+                    next.id(),
+                    null,
+                    next.releaseTime(),
+                    URLDecoder.decode(next.url(), StandardCharsets.UTF_8),
+                    null,
+                    next.type().jacksonName(),
+                    false
+                ));
+                if (result.fullEntry().hasDataGenInfo()) {
+                    Objects.requireNonNull(result.blockStates(), "Has Data Gen, but no block states given");
+                    LOGGER.info(() -> "[" + next.id() + "] Storing block state JSON file");
+                    try {
+                        blockStatesService.setBlockStates(
+                            result.fullEntry().dataVersion(),
+                            BlockStateConverter.convert(result.blockStates())
+                        );
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
                     }
-                    LOGGER.info(() -> "[" + next.id() + "] Inserting into database");
-                    minecraftVersionService.insert(List.of(result.fullEntry()));
-                }, workExecutor);
-                future.whenComplete((__, ex) -> {
-                    if (ex != null) {
-                        LOGGER.warn(() -> "[" + next.id() + "] Failed to load version", ex);
-                    } else {
-                        LOGGER.info(() -> "[" + next.id() + "] Fully loaded!");
-                    }
-                });
-                // Ensure this gets released no matter what
-                future.whenComplete((__, ___) -> loadingLimit.release());
-            } catch (Throwable t) {
-                loadingLimit.release();
-                throw t;
-            }
+                }
+                LOGGER.info(() -> "[" + next.id() + "] Inserting into database");
+                minecraftVersionService.insert(List.of(result.fullEntry()));
+            }, workExecutor);
+            future.whenComplete((__, ex) -> {
+                if (ex != null) {
+                    LOGGER.warn(() -> "[" + next.id() + "] Failed to load version", ex);
+                } else {
+                    LOGGER.info(() -> "[" + next.id() + "] Fully loaded!");
+                }
+            });
         }
     }
 }

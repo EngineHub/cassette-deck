@@ -21,9 +21,7 @@ package org.enginehub.cassettedeck.data.upstream;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
-import org.apache.commons.compress.archivers.zip.ZipFile;
-import org.apache.commons.compress.utils.SeekableInMemoryByteChannel;
+import org.apache.commons.io.function.IOFunction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.enginehub.cassettedeck.data.blob.LibraryStorage;
@@ -36,13 +34,14 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 @Component
 public class ExtraMetadataLoader {
@@ -91,33 +90,27 @@ public class ExtraMetadataLoader {
         LOGGER.info(() -> "[" + entry.version() + "] Starting load for JAR bytes");
         boolean doDataGen = metadata.type() == MinecraftVersionType.RELEASE
             && entry.releaseDate().isAfter(DATA_GEN_AFTER);
-        byte[] minecraftJarBytes;
         try {
-            // We need the client if we're doing data gen
-            minecraftJarBytes = getMinecraftJarBytes(entry, metadata, doDataGen);
-        } catch (RestClientException e) {
-            throw new DownloadException(DownloadException.Kind.IO_ERROR, e);
-        }
-        LOGGER.info(() -> "[" + entry.version() + "] Downloaded + verified Minecraft JAR bytes");
+            // This is bugged right now
+            //noinspection DataFlowIssue
+            int dataVersion = useMinecraftJarFile(entry, metadata, doDataGen, minecraftJarPath -> {
+                LOGGER.info(() -> "[" + entry.version() + "] Downloaded + verified Minecraft JAR bytes");
 
-        int dataVersion;
-        MojangBlockStates blockStates;
-        try {
-            try (
-                var zf = ZipFile.builder()
-                    .setSeekableByteChannel(new SeekableInMemoryByteChannel(minecraftJarBytes))
-                    .get()
-            ) {
-                dataVersion = getDataVersion(entry, zf);
-                if (doDataGen) {
-                    if (zf.getEntry("net/minecraft/data/Main.class") == null) {
-                        throw new IllegalStateException(
-                            "Need to data gen, but the data gen Main is missing from the " + entry.version() + " JAR"
-                        );
+                int dv;
+                try (var zf = new ZipFile(minecraftJarPath.toFile())) {
+                    dv = getDataVersion(entry, zf);
+                    if (doDataGen) {
+                        if (zf.getEntry("net/minecraft/data/Main.class") == null) {
+                            throw new IllegalStateException(
+                                "Need to data gen, but the data gen Main is missing from the " + entry.version() + " JAR"
+                            );
+                        }
                     }
                 }
-            }
+                return dv;
+            });
 
+            MojangBlockStates blockStates;
             if (doDataGen) {
                 blockStates = new DataGeneratorExecutor(
                     dataGenConfig, metadata, metadata.downloads().client().fillInPath(entry.version(), "client")
@@ -125,29 +118,29 @@ public class ExtraMetadataLoader {
             } else {
                 blockStates = null;
             }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
 
-        return new Result(
-            new MinecraftVersionEntry(
-                entry.version(),
-                dataVersion,
-                entry.releaseDate(),
-                entry.url(),
-                metadata.downloads().client().url(),
-                entry.type(),
-                doDataGen
-            ),
-            blockStates
-        );
+            return new Result(
+                new MinecraftVersionEntry(
+                    entry.version(),
+                    dataVersion,
+                    entry.releaseDate(),
+                    entry.url(),
+                    metadata.downloads().client().url(),
+                    entry.type(),
+                    doDataGen
+                ),
+                blockStates
+            );
+        } catch (RestClientException | IOException e) {
+            throw new DownloadException(DownloadException.Kind.IO_ERROR, e);
+        }
     }
 
     private int getDataVersion(MinecraftVersionEntry entry, ZipFile zf) throws IOException {
         if (KNOWN_DATA_VERSIONS.containsKey(entry.version())) {
             return KNOWN_DATA_VERSIONS.get(entry.version());
         }
-        ZipArchiveEntry versionJsonEntry = zf.getEntry("version.json");
+        ZipEntry versionJsonEntry = zf.getEntry("version.json");
         if (versionJsonEntry == null) {
             // This is expected.
             LOGGER.info(() -> "[" + entry.version() + "] Missing version.json, entering -1 for data version");
@@ -161,10 +154,11 @@ public class ExtraMetadataLoader {
         return versionData.worldVersion;
     }
 
-    private byte[] getMinecraftJarBytes(
+    private <R extends @Nullable Object> R useMinecraftJarFile(
         MinecraftVersionEntry entry,
         MinecraftMetadata metadata,
-        boolean forceClient
+        boolean forceClient,
+        IOFunction<Path, R> function
     ) {
         record DownloadWithName(
             String name,
@@ -186,8 +180,7 @@ public class ExtraMetadataLoader {
         LOGGER.info(() -> "[" + entry.version() + "] Our JAR url is " + chosenEntry.download().url());
         try {
             var withPath = chosenEntry.download().fillInPath(entry.version(), chosenEntry.name());
-            Path libraryJar = libraryStorage.getLibraryJar(withPath);
-            return Files.readAllBytes(libraryJar);
+            return libraryStorage.useLibraryJar(withPath, function);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

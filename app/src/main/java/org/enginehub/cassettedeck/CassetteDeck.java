@@ -32,6 +32,8 @@ import org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration;
     }
 )
 public class CassetteDeck {
+    public static final String USER_AGENT = "cassette-deck";
+
     public static void main(String[] args) {
         System.setProperty("org.jooq.no-logo", "true");
         System.setProperty("org.jooq.no-tips", "true");

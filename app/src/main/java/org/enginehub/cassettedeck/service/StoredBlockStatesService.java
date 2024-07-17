@@ -19,7 +19,7 @@
 package org.enginehub.cassettedeck.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.enginehub.cassettedeck.data.blob.BlobStorage;
+import org.enginehub.cassettedeck.data.blob.DiskStorage;
 import org.enginehub.cassettedeck.data.downstream.BlockStates;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -29,11 +29,11 @@ import java.io.IOException;
 
 @Service
 public class StoredBlockStatesService implements BlockStatesService {
-    private final BlobStorage storage;
+    private final DiskStorage storage;
     private final ObjectMapper mapper;
 
     public StoredBlockStatesService(
-        @Qualifier("blockStateData") BlobStorage storage,
+        @Qualifier("blockStateData") DiskStorage storage,
         ObjectMapper mapper
     ) {
         this.storage = storage;
@@ -52,6 +52,9 @@ public class StoredBlockStatesService implements BlockStatesService {
 
     @Override
     public void setBlockStates(int dataVersion, BlockStates blockStates) throws IOException {
-        storage.store(dataVersion + ".json", stream -> mapper.writeValue(stream, blockStates));
+        storage.store(
+            dataVersion + ".json",
+            destination -> mapper.writeValue(destination.toFile(), blockStates)
+        );
     }
 }

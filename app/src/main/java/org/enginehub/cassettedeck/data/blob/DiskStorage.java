@@ -18,7 +18,13 @@
 
 package org.enginehub.cassettedeck.data.blob;
 
+import com.google.common.util.concurrent.Striped;
+import org.apache.commons.io.function.IOConsumer;
+import org.apache.commons.io.function.IOFunction;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,13 +32,48 @@ import java.io.UncheckedIOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Stream;
 
-public class DiskStorage implements BlobStorage {
+public class DiskStorage {
+
+    private static final Duration EXPIRATION = Duration.ofDays(30);
+    private static final Logger LOGGER = LogManager.getLogger();
+
+    private static Path writeToTempFile(Path ourKey, IOConsumer<Path> consumer) throws IOException {
+        Path tempFile = Files.createTempFile(ourKey.getParent(), ourKey.getFileName().toString(), ".tmp");
+        tempFile.toFile().deleteOnExit();
+        try {
+            consumer.accept(tempFile);
+        } catch (Throwable t) {
+            try {
+                Files.delete(tempFile);
+            } catch (IOException e) {
+                LOGGER.warn("Failed to delete temp file: {}", tempFile, e);
+            }
+            throw t;
+        }
+        return tempFile;
+    }
+
+    private static void touchKey(Path path) {
+        try {
+            Files.setLastModifiedTime(path, FileTime.from(Instant.now()));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to update last modified time for " + path, e);
+        }
+    }
+
     // NB: This class assumes only a single process is running, and therefore only uses an in-process lock.
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Striped<ReadWriteLock> locks = Striped.readWriteLock(32);
     private final Path storageDir;
 
     public DiskStorage(Path storageDir) {
@@ -44,8 +85,42 @@ public class DiskStorage implements BlobStorage {
         }
     }
 
+    @Scheduled(fixedDelay = 1, timeUnit = TimeUnit.DAYS)
+    public void cleanUpOldEntries() {
+        Instant keepAfter = Instant.now().minus(EXPIRATION);
+        try (Stream<Path> walk = Files.walk(storageDir)) {
+            walk
+                .filter(Files::isRegularFile)
+                .forEach(path -> {
+                    Lock lock = locks.get(path).readLock();
+                    lock.lock();
+                    try {
+                        FileTime lastModifiedTime;
+                        try {
+                            lastModifiedTime = Files.getLastModifiedTime(path);
+                        } catch (IOException e) {
+                            LOGGER.warn("Failed to get last modified time for file: {}", path, e);
+                            return;
+                        }
+                        if (lastModifiedTime.toInstant().isAfter(keepAfter)) {
+                            return;
+                        }
+                        try {
+                            Files.delete(path);
+                        } catch (IOException e) {
+                            LOGGER.warn("Failed to delete old file: {}", path, e);
+                        }
+                    } finally {
+                        lock.unlock();
+                    }
+                });
+        } catch (IOException e) {
+            LOGGER.warn("Failed to clean up old entries", e);
+        }
+    }
+
     private Path ourKey(String key) {
-        Path ourKey = storageDir.resolve(key);
+        Path ourKey = storageDir.resolve(key).toAbsolutePath();
         if (ourKey.equals(storageDir)) {
             throw new IllegalArgumentException("Key path is the storage directory: " + key);
         }
@@ -55,74 +130,137 @@ public class DiskStorage implements BlobStorage {
         return ourKey;
     }
 
-    public @Nullable Path retrievePath(String key) {
-        var path = ourKey(key);
-        if (!Files.exists(path)) {
-            return null;
+    public <R extends @Nullable Object> R usePath(String key, IOFunction<Path, R> consumer) throws IOException {
+        Path ourKey = ourKey(key);
+        Lock lock = locks.get(ourKey).readLock();
+        lock.lock();
+        try {
+            if (!Files.isRegularFile(ourKey)) {
+                throw new IOException("No such file: " + ourKey);
+            }
+            touchKey(ourKey);
+            return consumer.apply(ourKey);
+        } finally {
+            lock.unlock();
         }
-        return path;
     }
 
-    @Override
-    public InputStream retrieve(String key) throws IOException {
+    public <R extends @Nullable Object> R usePaths(List<String> key, IOFunction<List<Path>, R> consumer) throws IOException {
+        List<Path> ourKeys = key.stream().map(this::ourKey).toList();
+        List<Lock> readLocks = new ArrayList<>(ourKeys.size());
+        for (ReadWriteLock lock : locks.bulkGet(ourKeys)) {
+            readLocks.add(lock.readLock());
+        }
+        for (int i = 0; i < ourKeys.size(); i++) {
+            try {
+                readLocks.get(i).lock();
+            } catch (Throwable t) {
+                // This is really paranoid, but we don't want to leave any locks held
+                // Even this isn't exactly perfect, if unlock throws, we're in trouble. But that should never happen.
+                for (int j = i - 1; j >= 0; j--) {
+                    readLocks.get(j).unlock();
+                }
+                throw t;
+            }
+        }
+        try {
+            for (Path ourKey : ourKeys) {
+                if (!Files.isRegularFile(ourKey)) {
+                    throw new IOException("No such file: " + ourKey);
+                }
+                touchKey(ourKey);
+            }
+            return consumer.apply(ourKeys);
+        } finally {
+            for (Lock lock : readLocks) {
+                lock.unlock();
+            }
+        }
+    }
+
+    // This API is Linux-specific in design, but we don't care about Windows.
+    // Specifically, we rely on atomic moves and the ability to delete open files without issue.
+    public @Nullable InputStream retrieve(String key) throws IOException {
         Path ourKey = ourKey(key);
-        lock.readLock().lock();
+        Lock lock = locks.get(ourKey).readLock();
+        lock.lock();
         try {
             if (Files.isRegularFile(ourKey)) {
+                touchKey(ourKey);
                 // racy, but we _should_ be the sole owner of the storage
                 // anyone cleaning our files can suffer
                 return Files.newInputStream(ourKey);
             }
-            return null;
         } finally {
-            lock.readLock().unlock();
+            lock.unlock();
         }
+        return null;
     }
 
-    @Override
-    public void store(String key, OutputStreamConsumer consumer) throws IOException {
+    public void store(String key, IOConsumer<Path> consumer) throws IOException {
         Path ourKey = ourKey(key);
         Files.createDirectories(ourKey.getParent());
-        lock.writeLock().lock();
+        Lock lock = locks.get(ourKey).writeLock();
+        lock.lock();
         try {
-            try (var output = Files.newOutputStream(ourKey)) {
-                consumer.accept(output);
+            Path tempFile = writeToTempFile(ourKey, consumer);
+            try {
+                Files.move(tempFile, ourKey, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (Throwable t) {
+                try {
+                    Files.delete(tempFile);
+                } catch (IOException e) {
+                    LOGGER.warn("Failed to delete temp file: {}", tempFile, e);
+                }
+                throw t;
             }
         } finally {
-            lock.writeLock().unlock();
+            lock.unlock();
         }
     }
 
-    @Override
-    public InputStream storeIfAbsent(String key, OutputStreamConsumer consumer) throws IOException {
+    /**
+     * If there is no blob for the given key, use {@code consumer} to fill it, then return a stream to get the contents
+     * of the blob.
+     *
+     * @param key the key
+     * @param consumer the blob provider
+     * @return the content of the blob
+     * @throws IOException if there is an I/O error
+     */
+    public InputStream storeIfAbsent(String key, IOConsumer<Path> consumer) throws IOException {
         Path ourKey = ourKey(key);
         while (true) {
-            lock.readLock().lock();
+            Lock lock = locks.get(ourKey).writeLock();
+            lock.lock();
             try {
                 if (Files.isRegularFile(ourKey)) {
                     // racy, but we _should_ be the sole owner of the storage
                     // anyone cleaning our files can suffer
                     return Files.newInputStream(ourKey);
                 }
+                tryStore(ourKey, consumer);
             } finally {
-                lock.readLock().unlock();
+                lock.unlock();
             }
-            tryStore(ourKey, consumer);
         }
     }
 
-    private void tryStore(Path ourKey, OutputStreamConsumer consumer) throws IOException {
+    private void tryStore(Path ourKey, IOConsumer<Path> consumer) throws IOException {
         Files.createDirectories(ourKey.getParent());
-        lock.writeLock().lock();
+        Path tempFile = writeToTempFile(ourKey, consumer);
         try {
-            // Atomically open the file for writing, failing if it's already there
-            try (var output = Files.newOutputStream(ourKey, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-                consumer.accept(output);
-            } catch (FileAlreadyExistsException ignored) {
-                // We'll catch the new file on our next go around.
+            Files.move(tempFile, ourKey, StandardCopyOption.ATOMIC_MOVE);
+        } catch (FileAlreadyExistsException e) {
+            // someone else beat us to it
+            Files.delete(tempFile);
+        } catch (Throwable t) {
+            try {
+                Files.delete(tempFile);
+            } catch (IOException e) {
+                LOGGER.warn("Failed to delete temp file: {}", tempFile, e);
             }
-        } finally {
-            lock.writeLock().unlock();
+            throw t;
         }
     }
 }

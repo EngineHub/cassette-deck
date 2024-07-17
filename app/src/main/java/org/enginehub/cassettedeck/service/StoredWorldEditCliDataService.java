@@ -19,7 +19,7 @@
 package org.enginehub.cassettedeck.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.enginehub.cassettedeck.data.blob.BlobStorage;
+import org.enginehub.cassettedeck.data.blob.DiskStorage;
 import org.enginehub.cassettedeck.data.downstream.CliData;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -29,11 +29,11 @@ import java.io.IOException;
 
 @Service
 public class StoredWorldEditCliDataService implements WorldEditCliDataService {
-    private final BlobStorage storage;
+    private final DiskStorage storage;
     private final ObjectMapper mapper;
 
     public StoredWorldEditCliDataService(
-        @Qualifier("worldEditCliData") BlobStorage storage,
+        @Qualifier("worldEditCliData") DiskStorage storage,
         ObjectMapper mapper
     ) {
         this.storage = storage;
@@ -52,6 +52,9 @@ public class StoredWorldEditCliDataService implements WorldEditCliDataService {
 
     @Override
     public void setCliData(int dataVersion, int cliDataVersion, CliData cliData) throws IOException {
-        storage.store(dataVersion + "-" + cliDataVersion + ".json", stream -> mapper.writeValue(stream, cliData));
+        storage.store(
+            dataVersion + "-" + cliDataVersion + ".json",
+            destination -> mapper.writeValue(destination.toFile(), cliData)
+        );
     }
 }
