@@ -1,15 +1,15 @@
 [versions]
-jooq = "3.19.10"
+jooq = "3.20.8"
 
 [plugins]
-spring-boot = "org.springframework.boot:3.3.1"
+spring-boot = "org.springframework.boot:3.5.6"
 
 licenser = "org.cadixdev.licenser:0.6.1"
 
-jooq = "nu.studer.jooq:9.0"
+jooq = "nu.studer.jooq:10.1.1"
 
 [libraries]
-jetbrains-annotations = "org.jetbrains:annotations:24.1.0"
+jetbrains-annotations = "org.jetbrains:annotations:26.0.2-1"
 
 spring-boot-starter-web.module = "org.springframework.boot:spring-boot-starter-web"
 spring-boot-starter-tomcat.module = "org.springframework.boot:spring-boot-starter-tomcat"
@@ -21,15 +21,15 @@ spring-boot-starter-test.module = "org.springframework.boot:spring-boot-starter-
 
 bucket4j-core = "com.github.vladimir-bukhtoyarov:bucket4j-core:8.0.1"
 
-apache-commons-compress = "org.apache.commons:commons-compress:1.26.2"
+apache-commons-compress = "org.apache.commons:commons-compress:1.28.0"
 
-guava = "com.google.guava:guava:33.2.1-jre"
+guava = "com.google.guava:guava:33.5.0-jre"
 
-xerial-sqlite = "org.xerial:sqlite-jdbc:3.46.0.0"
+xerial-sqlite = "org.xerial:sqlite-jdbc:3.50.3.0"
 
 disruptor = "com.lmax:disruptor:4.0.0"
 
-junit-bom = "org.junit:junit-bom:5.10.3"
+junit-bom = "org.junit:junit-bom:6.0.0"
 junit-jupiter-api.module = "org.junit.jupiter:junit-jupiter-api"
 junit-jupiter-engine.module = "org.junit.jupiter:junit-jupiter-engine"
 

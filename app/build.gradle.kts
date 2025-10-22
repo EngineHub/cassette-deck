@@ -10,7 +10,7 @@ plugins {
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }
 
 tasks.withType<JavaCompile> {
@@ -24,7 +24,7 @@ repositories {
 configure<LicenseExtension> {
     exclude {
         // TODO make a PR to licenser to properly fix this
-        it.file.startsWith(project.buildDir)
+        it.file.startsWith(project.layout.buildDirectory.get().asFile)
     }
     header(rootProject.file("HEADER.txt"))
     (this as ExtensionAware).extra.apply {
@@ -78,7 +78,8 @@ application {
         "-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector",
         "-Xms64M",
         "-Xmx512M",
-        "-XX:G1PeriodicGCInterval=1000"
+        "-XX:G1PeriodicGCInterval=1000",
+        "--enable-native-access=ALL-UNNAMED"
     )
 }
 
@@ -147,6 +148,7 @@ tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
     allInputsDeclared.set(true)
     setJavaExecSpec {
         executable = project.javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
     }
 }
 

@@ -24,6 +24,7 @@ import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.enginehub.cassettedeck.service.BlockStatesService;
 import org.enginehub.cassettedeck.service.MinecraftVersionService;
 import org.enginehub.cassettedeck.util.BlockStateConverter;
+import org.jooq.exception.IntegrityConstraintViolationException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -112,7 +113,11 @@ public class MinecraftVersionPoller {
                     }
                 }
                 LOGGER.info(() -> "[" + next.id() + "] Inserting into database");
-                minecraftVersionService.insert(List.of(result.fullEntry()));
+                try {
+                    minecraftVersionService.insert(List.of(result.fullEntry()));
+                } catch (IntegrityConstraintViolationException e) {
+                    LOGGER.warn(() -> "[" + next.id() + "] Skipping already-inserted version");
+                }
             }, workExecutor);
             future.whenComplete((__, ex) -> {
                 if (ex != null) {

@@ -28,6 +28,7 @@ import org.enginehub.cassettedeck.data.blob.LibraryStorage;
 import org.enginehub.cassettedeck.db.gen.tables.pojos.MinecraftVersionEntry;
 import org.enginehub.cassettedeck.exception.DownloadException;
 import org.jetbrains.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -39,6 +40,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -58,17 +60,20 @@ public class ExtraMetadataLoader {
     private final RestTemplate restTemplate;
     private final LibraryStorage libraryStorage;
     private final DataGeneratorExecutor.Config dataGenConfig;
+    private final Semaphore downloadSemaphore;
 
     public ExtraMetadataLoader(
         ObjectMapper mapper,
         RestTemplate restTemplate,
         LibraryStorage libraryStorage,
-        DataGeneratorExecutor.Config dataGenConfig
+        DataGeneratorExecutor.Config dataGenConfig,
+        @Qualifier("concurrentDownloads") Semaphore downloadSemaphore
     ) {
         this.mapper = mapper;
         this.restTemplate = restTemplate;
         this.libraryStorage = libraryStorage;
         this.dataGenConfig = dataGenConfig;
+        this.downloadSemaphore = downloadSemaphore;
     }
 
     public record Result(
@@ -85,7 +90,13 @@ public class ExtraMetadataLoader {
     }
 
     public Result load(MinecraftVersionEntry entry) throws DownloadException {
-        var metadata = restTemplate.getForObject(entry.url(), MinecraftMetadata.class);
+        downloadSemaphore.acquireUninterruptibly();
+        MinecraftMetadata metadata;
+        try {
+            metadata = restTemplate.getForObject(entry.url(), MinecraftMetadata.class);
+        } finally {
+            downloadSemaphore.release();
+        }
         Objects.requireNonNull(metadata, "metadata is null");
         LOGGER.info(() -> "[" + entry.version() + "] Starting load for JAR bytes");
         boolean doDataGen = metadata.type() == MinecraftVersionType.RELEASE

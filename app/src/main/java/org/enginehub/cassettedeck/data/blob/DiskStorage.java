@@ -24,7 +24,6 @@ import org.apache.commons.io.function.IOFunction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
-import org.springframework.scheduling.annotation.Scheduled;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,18 +33,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
-import java.util.stream.Stream;
 
 public class DiskStorage {
 
-    private static final Duration EXPIRATION = Duration.ofDays(30);
     private static final Logger LOGGER = LogManager.getLogger();
 
     private static Path writeToTempFile(Path ourKey, IOConsumer<Path> consumer) throws IOException {
@@ -82,40 +77,6 @@ public class DiskStorage {
             this.storageDir = storageDir.toRealPath();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
-        }
-    }
-
-    @Scheduled(fixedDelay = 1, timeUnit = TimeUnit.DAYS)
-    public void cleanUpOldEntries() {
-        Instant keepAfter = Instant.now().minus(EXPIRATION);
-        try (Stream<Path> walk = Files.walk(storageDir)) {
-            walk
-                .filter(Files::isRegularFile)
-                .forEach(path -> {
-                    Lock lock = locks.get(path).readLock();
-                    lock.lock();
-                    try {
-                        FileTime lastModifiedTime;
-                        try {
-                            lastModifiedTime = Files.getLastModifiedTime(path);
-                        } catch (IOException e) {
-                            LOGGER.warn("Failed to get last modified time for file: {}", path, e);
-                            return;
-                        }
-                        if (lastModifiedTime.toInstant().isAfter(keepAfter)) {
-                            return;
-                        }
-                        try {
-                            Files.delete(path);
-                        } catch (IOException e) {
-                            LOGGER.warn("Failed to delete old file: {}", path, e);
-                        }
-                    } finally {
-                        lock.unlock();
-                    }
-                });
-        } catch (IOException e) {
-            LOGGER.warn("Failed to clean up old entries", e);
         }
     }
 

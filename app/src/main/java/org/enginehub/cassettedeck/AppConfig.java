@@ -31,6 +31,7 @@ import org.springframework.web.client.RestTemplate;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.concurrent.Semaphore;
 
 @Configuration
 @PropertySource("classpath:application.properties")
@@ -70,5 +71,12 @@ public class AppConfig {
         @Value("${disk.worldedit-cli-data.storage-dir}") Path storageDir
     ) {
         return new DiskStorage(storageDir);
+    }
+
+    @Bean
+    public Semaphore concurrentDownloads(
+        @Value("${network.concurrent-downloads:5}") int maxConcurrentDownloads
+    ) {
+        return new Semaphore(maxConcurrentDownloads);
     }
 }

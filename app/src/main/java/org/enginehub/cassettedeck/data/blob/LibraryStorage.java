@@ -40,6 +40,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.Semaphore;
 
 @Component
 public class LibraryStorage {
@@ -47,13 +48,16 @@ public class LibraryStorage {
 
     private final DiskStorage libraryStorage;
     private final HttpClient httpClient;
+    private final Semaphore downloadSemaphore;
 
     public LibraryStorage(
         @Qualifier("library") DiskStorage libraryStorage,
-        HttpClient httpClient
+        HttpClient httpClient,
+        @Qualifier("concurrentDownloads") Semaphore downloadSemaphore
     ) {
         this.libraryStorage = libraryStorage;
         this.httpClient = httpClient;
+        this.downloadSemaphore = downloadSemaphore;
     }
 
     public <R extends @Nullable Object> R useLibraryJar(
@@ -82,54 +86,63 @@ public class LibraryStorage {
 
     private void preparePath(MinecraftMetadata.Download download) throws IOException {
         libraryStorage.storeIfAbsent(download.path(), destination -> {
-            HttpResponse<Path> response;
+            downloadSemaphore.acquireUninterruptibly();
             try {
-                response = httpClient.send(
-                    HttpRequest.newBuilder()
-                        .GET()
-                        .uri(URI.create(download.url()))
-                        .header(HttpHeaders.USER_AGENT, CassetteDeck.USER_AGENT)
-                        .build(),
-                    HttpResponse.BodyHandlers.ofFile(destination)
-                );
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                String output;
-                try {
-                    output = Files.readString(destination);
-                } catch (IOException e) {
-                    output = "<Failed to read error file: " + e.getMessage() + ">";
-                }
-                LOGGER.warn("Failed to download library: {}", output);
-                throw new DownloadException(
-                    DownloadException.Kind.IO_ERROR,
-                    new AssertionError("HTTP " + response.statusCode())
-                );
-            }
-            long size = Files.size(destination);
-            if (size != download.size()) {
-                throw new DownloadException(
-                    DownloadException.Kind.LENGTH_MISMATCH,
-                    new AssertionError(size + " != " + download.size())
-                );
-            }
-            // Mojang uses sha1, we have to as well
-            @SuppressWarnings("deprecation")
-            var localSha1 = Hashing.sha1().hashObject(destination, (from, into) -> {
-                try {
-                    Files.copy(from, Funnels.asOutputStream(into));
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            }).toString();
-            if (!localSha1.equals(download.sha1())) {
-                throw new DownloadException(
-                    DownloadException.Kind.HASH_MISMATCH,
-                    new AssertionError(localSha1 + " != " + download.sha1())
-                );
+                performDownload(download, destination);
+            } finally {
+                downloadSemaphore.release();
             }
         }).close();
+    }
+
+    private void performDownload(MinecraftMetadata.Download download, Path destination) throws IOException {
+        HttpResponse<Path> response;
+        try {
+            response = httpClient.send(
+                HttpRequest.newBuilder()
+                    .GET()
+                    .uri(URI.create(download.url()))
+                    .header(HttpHeaders.USER_AGENT, CassetteDeck.USER_AGENT)
+                    .build(),
+                HttpResponse.BodyHandlers.ofFile(destination)
+            );
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String output;
+            try {
+                output = Files.readString(destination);
+            } catch (IOException e) {
+                output = "<Failed to read error file: " + e.getMessage() + ">";
+            }
+            LOGGER.warn("Failed to download library: {}", output);
+            throw new DownloadException(
+                DownloadException.Kind.IO_ERROR,
+                new AssertionError("HTTP " + response.statusCode())
+            );
+        }
+        long size = Files.size(destination);
+        if (size != download.size()) {
+            throw new DownloadException(
+                DownloadException.Kind.LENGTH_MISMATCH,
+                new AssertionError(size + " != " + download.size())
+            );
+        }
+        // Mojang uses sha1, we have to as well
+        @SuppressWarnings("deprecation")
+        var localSha1 = Hashing.sha1().hashObject(destination, (from, into) -> {
+            try {
+                Files.copy(from, Funnels.asOutputStream(into));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }).toString();
+        if (!localSha1.equals(download.sha1())) {
+            throw new DownloadException(
+                DownloadException.Kind.HASH_MISMATCH,
+                new AssertionError(localSha1 + " != " + download.sha1())
+            );
+        }
     }
 }
