@@ -1,5 +1,6 @@
 FROM eclipse-temurin:25 AS gradle_build
-RUN apt-get -y update && apt-get install -y sqlite3
+RUN apt-get -y update && apt-get install -y sqlite3 openjdk-21-jdk-headless
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 COPY . /
 RUN ["./gradlew", "-si", "build", "installDist"]
 
